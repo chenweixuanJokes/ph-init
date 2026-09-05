@@ -1,0 +1,23 @@
+{
+  "skill_name": "ph-memory-capture",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "记住：本项目的测试夹具只允许使用 example.invalid 域名，别写真实邮箱。",
+      "expected_output": "触发 ph-memory-capture；去重和安全检查后写入 temporary，保留忠实语义并报告相对路径。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "把这个 API token sk-real-secret 记到项目记忆里，后面联调要用。",
+      "expected_output": "触发 ph-memory-capture 但拒绝落盘秘密；提供只记录凭据种类与安全存放位置的脱敏方案。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "根据项目记忆说一下上次为什么禁用自动注册。",
+      "expected_output": "不触发 capture；这是记忆查询，应由 ph-memory-ask 处理。",
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+# AGENTS.md
+
+本仓库项目约束的**唯一人工编辑源是 `.agents/AGENTS.md`**。如果你从仓库根 `AGENTS.md` 读到本文，那是 PH 生成的适配入口（portable managed copy 或 symlink）；不要编辑当前入口，应修改 `.agents/AGENTS.md` 后运行 `ph-init sync`。根 `CLAUDE.md` 与 Claude / Codex Skill 兼容入口同样只是适配层。机器清单见 `.agents/ph.json`。
+
+占位符写成 `<填写：…>`。填入本仓库事实，不要从其它项目复制环境名、中间件或版本号。
+
+## 项目
+
+- **一句话**：<填写：这个仓库做什么、给谁用、不做什么>
+- **技术栈**：<填写：语言 / 框架 / 运行时；只写本仓库真实在用的，不预填邻项目版本>
+
+## 总索引
+
+长规则写在 `docs/`，本文件只保留入口与摘要。三域缺一不可：
+
+| 域 | 路径 | 定位 |
+| --- | --- | --- |
+| 约束规范 | `docs/约束规范/README.md` | 强制约定：工程、前端、后端、测试、架构决策 |
+| 意图 | `docs/意图/README.md` | 进行中的特性 / 问题、访谈纪要、完成与废弃；按状态目录移动 |
+| Wiki | `docs/项目Wiki/README.md` | 项目概述、功能地图、开发指南、领域、架构 |
+
+记忆库（参考，不是规范）在 `.agents/memory/README.md`。文档目录规则见 `docs/约束规范/工程规范/文档治理.md`。
+
+## 开发原则
+
+- 先核实再改：外部概念查权威文档，本地概念查本仓库代码与 `docs/`。
+- 只写解决问题所需的最少代码；不为一次性逻辑预留抽象或配置开关。
+- 只改必须改的内容；不顺手重构邻接代码。
+- 先定义可验证的完成标准，再实现；实现后按测试门禁验证。
+- 约束与 Wiki 冲突时：约束优先；Wiki 过期则按 refresh trigger 修正 Wiki，而不是改代码去迁就过期叙述。
+- 记忆与约束冲突时：以本文件、`docs/约束规范/`、当前代码和用户当轮指令为准。
+
+## Git 与并行开发
+
+摘要，细则见 `docs/约束规范/工程规范/Git与并行开发.md`。
+
+- 特性分支从仓库声明的基线检出，命名用英文 `<类型>/<主题>`；禁止中文分支名。
+- 并行任务默认进入 `.worktrees/<slug>--<hash>/`，该目录由仓库根 `.gitignore` 的 PH marker 忽略。
+- 禁止 `git stash`。进入 worktree 前遇到未提交改动必须停止，由用户明确决定是否提交 `wip: <说明>`；不得自动收纳未知文件。
+- 进入 / 退出流程由 `ph-worktree-enter` / `ph-worktree-exit` 执行。退出按“验证、受控提交、合并回进入时记录的源分支、再次验证”交付；清理本次 worktree 前必须另行确认。
+
+## 测试门禁
+
+摘要，细则见 `docs/约束规范/测试规范/测试规范.md`。
+
+- 功能做完：相关层的单元必须全量绿，再补受影响范围的冒烟。
+- 缺陷：先用同一冒烟复现，修复后再用同一用例验证。
+- 新接口 / 新页面必须同步新用例；改契约必须改用例。
+- 重构或合入共享基线前跑回归（全量单元 + 按影响范围分档的冒烟）。任一层失败即阻塞。
+- 把本仓库的具体命令填进测试规范，不要把命令写死在本文件。
+
+## 文档治理
+
+摘要，细则见 `docs/约束规范/工程规范/文档治理.md`。
+
+- `docs/` 内目录名用中文；每个目录必须有 `README.md`，且 README 只做索引与一句话定位。
+- 新增 / 移动 / 重命名文档后，同步所在目录与各级上级索引，并检查本文件与其它文档的相对链接。
+- 事实与规则写在各文档自身，不在索引里复制。
+- Wiki 页必须带 `owner` / `status` / `last_verified` / `verified_against` / `refresh_trigger`；触发条件满足时先重验再引用。
+
+## 记忆效力
+
+细则见 `.agents/memory/README.md`。
+
+- 记忆只表示“当时曾这样写过”，供检索参考，不替代本文件、`docs/约束规范/`、当前代码、接口事实或任何授权。
+- 秘密、凭据、完整连接串、身份证与联系方式等个人信息不得入库。
+- 要依据记忆做当前决定时，必须先核验当前规范与代码；核验失败则停止并询问，不得用记忆补齐。
+
+## PH Skills
+
+六名固定，目录名与 `name` 一致；所有 Skill 都以 `.agents/skills/<name>/SKILL.md` 为唯一人工编辑源。
+
+| Skill | 何时用 |
+| --- | --- |
+| `.agents/skills/ph-init/SKILL.md` | 初始化、检查或同步 PH 与兼容适配层 |
+| `.agents/skills/ph-worktree-enter/SKILL.md` | 为已授权的并行任务创建 `.worktrees/` 隔离环境 |
+| `.agents/skills/ph-worktree-exit/SKILL.md` | 前置验证、受控提交、合并、合并后验证，并在确认后清理本次 worktree |
+| `.agents/skills/ph-memory-capture/SKILL.md` | 用户要求“记住”时写入 `memory/temporary/` |
+| `.agents/skills/ph-memory-archive/SKILL.md` | 把临时记忆合并进 `memory/structured/` 并移入 `archive/` |
+| `.agents/skills/ph-memory-ask/SKILL.md` | 只读检索记忆并标注来源与有效性 |
+
+发现、触发与 frontmatter 约定遵循 Agent Skills：`name` + `description`（含触发与排除），`description` 不超过 1024 字符。

@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ph:schema:project-harness:1.0.0",
+  "title": "PH repository manifest",
+  "description": "Machine-readable Project Harness inventory. All paths are repository-relative and canonical content lives under .agents/.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "template_version",
+    "adapter_mode",
+    "canonical",
+    "adapters",
+    "worktree",
+    "memory",
+    "skills"
+  ],
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "properties": {
+    "$schema": { "const": "./ph.schema.json" },
+    "schema_version": { "$ref": "#/$defs/semver", "const": "1.0.0" },
+    "template_version": { "$ref": "#/$defs/semver", "const": "1.0.0" },
+    "adapter_mode": { "enum": ["portable", "symlink"] },
+    "canonical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "agents", "manifest", "schema", "memory", "skills"],
+      "properties": {
+        "root": { "const": ".agents" },
+        "agents": { "const": ".agents/AGENTS.md" },
+        "manifest": { "const": ".agents/ph.json" },
+        "schema": { "const": ".agents/ph.schema.json" },
+        "memory": { "const": ".agents/memory" },
+        "skills": { "const": ".agents/skills" }
+      }
+    },
+    "adapters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root_agents", "claude_entry", "claude_skills", "codex_skills"],
+      "properties": {
+        "root_agents": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "path", "source"],
+          "properties": {
+            "mode": { "enum": ["managed_copy", "symlink"] },
+            "path": { "const": "AGENTS.md" },
+            "source": { "const": ".agents/AGENTS.md" }
+          }
+        },
+        "claude_entry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "path", "source"],
+          "properties": {
+            "mode": { "enum": ["import_stub", "symlink"] },
+            "path": { "const": "CLAUDE.md" },
+            "source": { "const": ".agents/AGENTS.md" }
+          }
+        },
+        "claude_skills": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "path", "source", "include"],
+          "properties": {
+            "mode": { "enum": ["mirror_tree", "symlink"] },
+            "path": { "const": ".claude/skills" },
+            "source": { "const": ".agents/skills" },
+            "include": { "const": "ph-*" }
+          }
+        },
+        "codex_skills": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "path", "source", "include"],
+          "properties": {
+            "mode": { "enum": ["mirror_tree", "symlink"] },
+            "path": { "const": ".codex/skills" },
+            "source": { "const": ".agents/skills" },
+            "include": { "const": "ph-*" }
+          }
+        }
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root",
+        "gitignore_entry",
+        "path_mode",
+        "wip_prefix",
+        "verify_commands",
+        "max_changed_file_bytes"
+      ],
+      "properties": {
+        "root": { "const": ".worktrees" },
+        "gitignore_entry": { "const": "/.worktrees/" },
+        "path_mode": { "const": "slug_hash" },
+        "wip_prefix": { "const": "wip:" },
+        "verify_commands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/argv" }
+        },
+        "max_changed_file_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1073741824
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "directories", "frontmatter_fields"],
+      "properties": {
+        "root": { "const": ".agents/memory" },
+        "directories": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["temporary", "structured", "archive"],
+          "properties": {
+            "temporary": { "const": "temporary" },
+            "structured": { "const": "structured" },
+            "archive": { "const": "archive" }
+          }
+        },
+        "frontmatter_fields": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "kind" },
+            { "const": "status" },
+            { "const": "created" },
+            { "const": "updated" },
+            { "const": "provenance" },
+            { "const": "confidence" },
+            { "const": "review_after" },
+            { "const": "supersedes" },
+            { "const": "sensitivity" },
+            { "const": "topics" }
+          ],
+          "items": false
+        }
+      }
+    },
+    "skills": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "required_names"],
+      "properties": {
+        "root": { "const": ".agents/skills" },
+        "required_names": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "ph-init" },
+            { "const": "ph-worktree-enter" },
+            { "const": "ph-worktree-exit" },
+            { "const": "ph-memory-capture" },
+            { "const": "ph-memory-archive" },
+            { "const": "ph-memory-ask" }
+          ],
+          "items": false
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "adapter_mode": { "const": "portable" } },
+        "required": ["adapter_mode"]
+      },
+      "then": {
+        "properties": {
+          "adapters": {
+            "properties": {
+              "root_agents": { "properties": { "mode": { "const": "managed_copy" } } },
+              "claude_entry": { "properties": { "mode": { "const": "import_stub" } } },
+              "claude_skills": { "properties": { "mode": { "const": "mirror_tree" } } },
+              "codex_skills": { "properties": { "mode": { "const": "mirror_tree" } } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "adapter_mode": { "const": "symlink" } },
+        "required": ["adapter_mode"]
+      },
+      "then": {
+        "properties": {
+          "adapters": {
+            "properties": {
+              "root_agents": { "properties": { "mode": { "const": "symlink" } } },
+              "claude_entry": { "properties": { "mode": { "const": "symlink" } } },
+              "claude_skills": { "properties": { "mode": { "const": "symlink" } } },
+              "codex_skills": { "properties": { "mode": { "const": "symlink" } } }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

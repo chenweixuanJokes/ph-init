@@ -1,0 +1,23 @@
+{
+  "skill_name": "ph-init",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "这个刚创建的 Git 仓库还没有项目级 Agent 约束，请按 PH 标准初始化整套目录，先预检再实施。",
+      "expected_output": "触发 ph-init；先 dry-run，发现冲突时阻断，确认无冲突后再以 portable 默认模式初始化并运行 check。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Windows 同事说根 AGENTS.md 和 .agents/AGENTS.md 不一致，检查 PH 适配层并给出同步方案。",
+      "expected_output": "触发 ph-init check/sync；以 canonical 为准校验 managed copy、Claude stub 和 Skill 镜像，不直接手改副本。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "在这个普通 Java 仓库执行 git init，再生成一个 README。",
+      "expected_output": "不触发 ph-init；这是 Git 初始化和普通文件创建，不是安装或维护 Project Harness。",
+      "files": []
+    }
+  ]
+}

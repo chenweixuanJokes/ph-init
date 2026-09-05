@@ -1,0 +1,3 @@
+# PH-marker: isolated Git worktrees are local execution environments, not source.
+# Keep this exact ignore entry so `ph-init` / adapters can detect the convention.
+/.worktrees/

@@ -1,0 +1,23 @@
+{
+  "skill_name": "ph-worktree-enter",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "这个需求和当前修复要并行做，帮我从主工作区开一个 feature/agent-search 的隔离 worktree。",
+      "expected_output": "触发 ph-worktree-enter；读取项目规范、先 dry-run，获得授权后创建 PH session 与 linked worktree。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "主目录现在有未提交修改，但我想立刻进入另一个 worktree，你帮我处理。",
+      "expected_output": "触发 ph-worktree-enter，但阻断创建；列出脏状态，不自动 commit、stash 或丢弃。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "把当前分支切换到 release/sit 看一下代码，不需要并行工作区。",
+      "expected_output": "不触发 ph-worktree-enter；这是普通切换分支且用户明确不需要 worktree。",
+      "files": []
+    }
+  ]
+}

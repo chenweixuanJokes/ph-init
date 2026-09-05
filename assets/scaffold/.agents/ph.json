@@ -1,0 +1,77 @@
+{
+  "$schema": "./ph.schema.json",
+  "schema_version": "1.0.0",
+  "template_version": "1.0.0",
+  "adapter_mode": "portable",
+  "canonical": {
+    "root": ".agents",
+    "agents": ".agents/AGENTS.md",
+    "manifest": ".agents/ph.json",
+    "schema": ".agents/ph.schema.json",
+    "memory": ".agents/memory",
+    "skills": ".agents/skills"
+  },
+  "adapters": {
+    "root_agents": {
+      "mode": "managed_copy",
+      "path": "AGENTS.md",
+      "source": ".agents/AGENTS.md"
+    },
+    "claude_entry": {
+      "mode": "import_stub",
+      "path": "CLAUDE.md",
+      "source": ".agents/AGENTS.md"
+    },
+    "claude_skills": {
+      "mode": "mirror_tree",
+      "path": ".claude/skills",
+      "source": ".agents/skills",
+      "include": "ph-*"
+    },
+    "codex_skills": {
+      "mode": "mirror_tree",
+      "path": ".codex/skills",
+      "source": ".agents/skills",
+      "include": "ph-*"
+    }
+  },
+  "worktree": {
+    "root": ".worktrees",
+    "gitignore_entry": "/.worktrees/",
+    "path_mode": "slug_hash",
+    "wip_prefix": "wip:",
+    "verify_commands": [],
+    "max_changed_file_bytes": 10485760
+  },
+  "memory": {
+    "root": ".agents/memory",
+    "directories": {
+      "temporary": "temporary",
+      "structured": "structured",
+      "archive": "archive"
+    },
+    "frontmatter_fields": [
+      "kind",
+      "status",
+      "created",
+      "updated",
+      "provenance",
+      "confidence",
+      "review_after",
+      "supersedes",
+      "sensitivity",
+      "topics"
+    ]
+  },
+  "skills": {
+    "root": ".agents/skills",
+    "required_names": [
+      "ph-init",
+      "ph-worktree-enter",
+      "ph-worktree-exit",
+      "ph-memory-capture",
+      "ph-memory-archive",
+      "ph-memory-ask"
+    ]
+  }
+}
