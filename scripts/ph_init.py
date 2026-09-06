@@ -34,18 +34,10 @@ PH_GITIGNORE_BLOCK = (
     "# Keep this exact ignore entry so `ph-init` / adapters can detect the convention.\n"
     "/.worktrees/\n"
 )
-REQUIRED_SKILLS = (
-    "ph-init",
-    "ph-worktree-enter",
-    "ph-worktree-exit",
-    "ph-memory-capture",
-    "ph-memory-archive",
-    "ph-memory-ask",
-    "ph-intent-new",
-    "ph-intent-impl",
-    "ph-intent-drop",
-)
-LOCKED_VERSION = "1.1.0"
+RELEASE = json.loads((Path(__file__).resolve().parent.parent / "release.json").read_text(encoding="utf-8"))
+RELEASE_VERSION = RELEASE["version"]
+SCHEMA_VERSION = RELEASE["schema_version"]
+REQUIRED_SKILLS = tuple(RELEASE["required_skills"])
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 REL_PATH = re.compile(
     r"^(?!\/)(?!\~\/)(?![A-Za-z]:)(?![a-zA-Z][a-zA-Z0-9+.-]*:)"
@@ -334,11 +326,11 @@ def validate_manifest(data: dict) -> None:
     ):
         _need(data, key, "")
     _const(data["$schema"], "./ph.schema.json", "$schema")
-    for key in ("schema_version", "template_version"):
+    for key, expected in (("schema_version", SCHEMA_VERSION), ("template_version", RELEASE_VERSION)):
         value = data[key]
-        if not isinstance(value, str) or not SEMVER.match(value):
+        if not isinstance(value, str) or not SEMVER.fullmatch(value):
             raise PHError(f"illegal manifest: {key} is not semver")
-        _const(value, LOCKED_VERSION, key)
+        _const(value, expected, key)
     if data["adapter_mode"] not in MODES:
         raise PHError("illegal manifest: adapter_mode must be portable or symlink")
 
@@ -490,25 +482,25 @@ def ensure_canonical_layout(repo: Path) -> None:
         reject_nested_links(root, label=f"canonical skill {name}")
 
 
-def load_repo_manifest(repo: Path) -> dict:
-    # Version lock first: an older complete tree must fail closed on schema /
-    # template version, not as a missing-new-skill layout error. Init / check /
-    # sync never upgrade or write a partial 1.1.0 overlay.
+def load_repo_manifest(repo: Path, *, candidate: dict | None = None) -> dict:
+    # Only the merge-update verifier supplies a candidate; normal commands
+    # reject old versions before checking for newly required skills.
     path = repo / ".agents" / "ph.json"
-    if path.is_file() and not path.is_symlink() and not is_disallowed_reparse(path):
-        data = read_json(path)
-        for key in ("schema_version", "template_version"):
-            if key in data:
-                value = data[key]
-                if isinstance(value, str) and SEMVER.match(value) and value != LOCKED_VERSION:
-                    raise PHError(
-                        f"illegal manifest: {key} must be {LOCKED_VERSION!r}, got {value!r}"
-                    )
-    ensure_canonical_layout(repo)
-    if path.is_symlink() or is_disallowed_reparse(path):
+    ensure_canonical_root(repo)
+    if path.is_symlink() or is_disallowed_reparse(path) or not contained(repo, path):
         raise PHError("canonical .agents/ph.json must be a regular repository-local file")
-    data = read_json(path)
+    if not path.is_file() or path.stat().st_nlink > 1:
+        raise PHError("canonical .agents/ph.json must be a regular unshared file")
+    actual = read_json(path)
+    data = actual if candidate is None else candidate
+    if candidate is not None:
+        expected = dict(actual)
+        expected.update(schema_version=SCHEMA_VERSION, template_version=RELEASE_VERSION)
+        expected["skills"] = dict(actual.get("skills", {}), required_names=list(REQUIRED_SKILLS))
+        if candidate != expected:
+            raise PHError("candidate may change only release/schema versions and required skills")
     validate_manifest(data)
+    ensure_canonical_layout(repo)
     return data
 
 
@@ -788,6 +780,16 @@ def ph_init_payload_files() -> list[Path]:
         raise PHError("ph-init installation payload is incomplete")
     files.append(skill_md)
     files.append(script)
+    for rel in ("release.json", "scripts/ph_release.py", "scripts/ph_merge_update.py"):
+        resource = root / rel
+        if not resource.is_file() or resource.is_symlink():
+            raise PHError(f"ph-init payload missing regular file: {rel}")
+        files.append(resource)
+    migrations = root / "migrations"
+    if not migrations.is_dir():
+        raise PHError("ph-init migrations missing")
+    reject_nested_links(migrations, label="ph-init migrations")
+    files.extend(iter_files(migrations))
     evals = root / "evals"
     if evals.is_dir():
         reject_nested_links(evals, label="ph-init evals")
@@ -1277,8 +1279,8 @@ def check_symlink(report: Report, repo: Path) -> None:
         check_one_symlink(report, repo, dest, src, rel)
 
 
-def check_common(report: Report, repo: Path) -> dict:
-    data = load_repo_manifest(repo)
+def check_common(report: Report, repo: Path, *, candidate: dict | None = None) -> dict:
+    data = load_repo_manifest(repo, candidate=candidate)
     for name in REQUIRED_SKILLS:
         skill = repo / ".agents" / "skills" / name / "SKILL.md"
         if not skill.is_file():
@@ -1377,11 +1379,11 @@ def plan_init_adapters(report: Report, repo: Path, mode: str) -> None:
         plan_one_symlink(report, repo, repo / ".codex" / "skills" / name, src, "symlink skill mirror")
 
 
-def cmd_check(repo: Path, mode: str) -> Report:
+def cmd_check(repo: Path, mode: str, *, candidate: dict | None = None) -> Report:
     report = Report("check", mode, False)
     preflight_blocks(report, repo, "check")
     try:
-        check_common(report, repo)
+        check_common(report, repo, candidate=candidate)
     except PHError as exc:
         report.add("error", ".agents/ph.json", str(exc))
         return report
@@ -1392,7 +1394,7 @@ def cmd_check(repo: Path, mode: str) -> Report:
     return report
 
 
-def cmd_sync(repo: Path, mode: str, apply: bool) -> Report:
+def cmd_sync(repo: Path, mode: str, apply: bool, *, candidate: dict | None = None) -> Report:
     """Rewrite managed adapters from canonical. Does not merge or upgrade.
 
     Sync exists to repair drift of files PH owns. It still refuses to clobber
@@ -1404,7 +1406,7 @@ def cmd_sync(repo: Path, mode: str, apply: bool) -> Report:
     report = Report("sync", mode, apply)
     preflight_blocks(report, repo, "sync")
     try:
-        load_repo_manifest(repo)
+        load_repo_manifest(repo, candidate=candidate)
     except PHError as exc:
         report.add("error", ".agents/ph.json", str(exc))
         return report

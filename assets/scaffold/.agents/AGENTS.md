@@ -93,11 +93,12 @@ docs/
 
 ## PH Skills
 
-九名固定，目录名与 `name` 一致；所有 Skill 都以 `.agents/skills/<name>/SKILL.md` 为唯一人工编辑源。
+十名固定，目录名与 `name` 一致；所有 Skill 都以 `.agents/skills/<name>/SKILL.md` 为唯一人工编辑源。升官方发行版用 `ph-merge-update`，不要用 `ph-init --apply` 覆盖本文件已填事实。升级进度在 `.agents/updates/<版本>/`（`state.json` 与 `report.md`），不是业务文档。
 
 | Skill | 何时用 |
 | --- | --- |
-| `.agents/skills/ph-init/SKILL.md` | 初始化、检查或同步 PH 与兼容适配层 |
+| `.agents/skills/ph-init/SKILL.md` | 尚未接入时初始化；检查或同步 PH 与兼容适配层 |
+| `.agents/skills/ph-merge-update/SKILL.md` | 已接入项目按正式发行版合并升级，验收后再推进版本 |
 | `.agents/skills/ph-worktree-enter/SKILL.md` | 为已授权的并行任务创建 `.worktrees/` 隔离环境 |
 | `.agents/skills/ph-worktree-exit/SKILL.md` | 前置验证、受控提交、合并、合并后验证，并在确认后清理本次 worktree |
 | `.agents/skills/ph-memory-capture/SKILL.md` | 用户要求“记住”时写入 `memory/temporary/` |

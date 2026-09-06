@@ -4,19 +4,43 @@
     {
       "id": 1,
       "prompt": "这个刚创建的 Git 仓库还没有项目级 Agent 约束，请按 PH 标准初始化整套目录，先预检再实施。",
-      "expected_output": "触发 ph-init；先 dry-run，发现冲突时阻断，确认无冲突后再以 portable 默认模式初始化并运行 check。",
+      "expected_output": "触发 ph-init。先对唯一 GitHub 源 prepare（latest 稳定 tag、固定 commit），读发行根 SKILL，再用该根 ph_init.py 先 dry-run 后 apply。无 tag 或网络失败则阻断，不拿本地 scaffold 冒充最新。不 git pull。确认后 portable 初始化并 check。本 eval 不表示已实测。",
       "files": []
     },
     {
       "id": 2,
       "prompt": "Windows 同事说根 AGENTS.md 和 .agents/AGENTS.md 不一致，检查 PH 适配层并给出同步方案。",
-      "expected_output": "触发 ph-init check/sync；以 canonical 为准校验 managed copy、Claude stub 和 Skill 镜像，不直接手改副本。",
+      "expected_output": "触发 ph-init 的 check/sync，使用项目已装内核，离线，不 prepare、不升 template_version、不走 ph-merge-update。本 eval 不表示已实测。",
       "files": []
     },
     {
       "id": 3,
+      "prompt": "仓库已按 PH 1.0.0 装过（六个 Skill，意图在进行中）。请升到官方最新正式版，先预检。",
+      "expected_output": "不把 init --apply 当升级。转交 ph-merge-update（可从新发行根 scaffold 读取该 Skill）。prepare 后 inspect 只读，识别六 Skill 历史布局。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "继续刚才的 1.1.1 升级。state 里有的项已 applied，待办目录已在，进行中还留着业务意图，版本号还没改。",
+      "expected_output": "仍走 merge-update 恢复实态，不重做已落地项，不批量搬进行中，不因版本将改或已改就跳过验收。不触发“当新仓 init”。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "项目 AGENTS 禁止再加 ph-* Skill、禁止改意图目录。现有 capture/plan/abandon。请用官方模板直接覆盖升级。",
+      "expected_output": "冲突项 blocked，停止受影响写入，不 init --apply 覆盖，不 finalize。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 6,
       "prompt": "在这个普通 Java 仓库执行 git init，再生成一个 README。",
-      "expected_output": "不触发 ph-init；这是 Git 初始化和普通文件创建，不是安装或维护 Project Harness。",
+      "expected_output": "不触发 ph-init；这是 Git 初始化和普通文件创建。",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "把导出需求录成意图，不要动 harness。",
+      "expected_output": "不触发 ph-init 或 ph-merge-update；属于 ph-intent-new。",
       "files": []
     }
   ]

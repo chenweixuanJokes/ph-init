@@ -1,0 +1,41 @@
+{
+  "skill_name": "ph-merge-update",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "这个仓库已经按 PH 1.0.0 装过，只有六个 Skill，意图还在 docs/意图/进行中。请升到官方最新正式版。先预检，我确认后再写。",
+      "expected_output": "触发 ph-merge-update 而不是 init --apply 或目标仓 git pull。prepare 固定 latest 稳定 tag/commit；inspect 识别六 Skill + 进行中；按 1.0.0→1.1.0→1.1.1 建 state（含 intent-domain 与 1.1.1 六项）。dry-run 不写盘。确认后合并框架与导航，保留进行中业务条目，不批量改派；candidate check 通过前不改 ph.json 版本。报告写差异与保护内容。本 eval 是行为定义，不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "继续升到 1.1.1。.agents/updates/1.1.1/state.json 里 intent-skill-names 已 applied，intent-lifecycle 还 pending；待办/实施目录已经建了，进行中还留着两条业务意图。template_version 仍是 1.1.0。",
+      "expected_output": "对照 state 与文件实态恢复，不重做已改名的意图 Skill，不重复插入导航章节；补完未完成项。不因部分目录已在就跳过验收，也不把进行中两条批量搬走。未宣称升级完成。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "升到 1.1.1。我们项目 AGENTS.md 写明禁止再增加任何 ph-* Skill，也禁止改意图目录名。现有的是 ph-intent-capture/plan/abandon。请直接覆盖成官方模板。",
+      "expected_output": "识别显式规则冲突，相关项 blocked 并停止受影响写入，不覆盖 AGENTS 定制、不退役冲突 Skill、不改目录名。向用户列出冲突与选项。不 finalize、不写版本、不 git commit/push。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Windows 同事说根 AGENTS.md 和 .agents/AGENTS.md 对不上，检查一下适配层并同步。",
+      "expected_output": "不触发 ph-merge-update；这是已装 ph-init 的 check/sync，不准备发行版、不改 template_version。",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "这个刚 git init 的空仓库还没有 .agents，按 PH 标准初始化。",
+      "expected_output": "不触发 ph-merge-update；交给 ph-init 的在线 prepare + 该发行根 init。",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "把导出需求录成意图，不要升级框架。",
+      "expected_output": "不触发 ph-merge-update；属于 ph-intent-new。",
+      "files": []
+    }
+  ]
+}

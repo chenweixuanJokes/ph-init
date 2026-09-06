@@ -26,8 +26,11 @@ SKIP_SUFFIXES = {".pyc", ".pyo"}
 
 
 def implementation_root() -> Path:
-    # scripts/ -> ph-init/ -> distribution/ -> 实施模板/
-    return Path(__file__).resolve().parents[3]
+    distribution = Path(__file__).resolve().parents[1]
+    root = distribution.parent.parent
+    if distribution.parent.name != "distribution" or not (root / "project-template").is_dir():
+        raise SystemExit("legacy template builder requires distribution/ph-init and project-template; do not run in the standalone release repository")
+    return root
 
 
 def template_root() -> Path:
