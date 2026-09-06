@@ -68,7 +68,7 @@
 
 ## PH Skills
 
-六名固定，目录名与 `name` 一致；所有 Skill 都以 `.agents/skills/<name>/SKILL.md` 为唯一人工编辑源。
+九名固定，目录名与 `name` 一致；所有 Skill 都以 `.agents/skills/<name>/SKILL.md` 为唯一人工编辑源。
 
 | Skill | 何时用 |
 | --- | --- |
@@ -78,5 +78,8 @@
 | `.agents/skills/ph-memory-capture/SKILL.md` | 用户要求“记住”时写入 `memory/temporary/` |
 | `.agents/skills/ph-memory-archive/SKILL.md` | 把临时记忆合并进 `memory/structured/` 并移入 `archive/` |
 | `.agents/skills/ph-memory-ask/SKILL.md` | 只读检索记忆并标注来源与有效性 |
+| `.agents/skills/ph-intent-capture/SKILL.md` | 录入或补充意图及访谈纪要 |
+| `.agents/skills/ph-intent-plan/SKILL.md` | 准备交接材料后进入原生计划模式 |
+| `.agents/skills/ph-intent-abandon/SKILL.md` | 明确原因后废弃意图并修复引用 |
 
-发现、触发与 frontmatter 约定遵循 Agent Skills：`name` + `description`（含触发与排除），`description` 不超过 1024 字符。
+发现、触发与 frontmatter 约定遵循 Agent Skills：`name` + `description`（含触发与排除），`description` 不超过 1024 字符。意图字段与纪要规则见 `docs/约束规范/工程规范/意图与访谈.md`。

@@ -1,6 +1,6 @@
 ---
 name: ph-memory-capture
-description: "把用户要求记住的内容写入仓库 `.agents/memory/temporary/`。只要用户说“记住”“记一下”“写进记忆”“capture memory”，或明确要把当前结论落成项目记忆——即使没点名本技能——都必须使用。不要把查记忆、归档记忆、普通知识问答、只回顾当前对话、或要求改规范/Wiki 误判为本技能。禁止写入秘密与个人信息。"
+description: "把用户要求记住的内容写入仓库 `.agents/memory/temporary/`。只要用户说“记住”“记一下”“写进记忆”“capture memory”，或明确要把当前结论落成项目记忆——即使没点名本技能——都必须使用。不要把查记忆、归档记忆、普通知识问答、只回顾当前对话、录入/规划/废弃意图、或要求改规范/Wiki 误判为本技能。禁止写入秘密与个人信息。"
 ---
 
 # ph-memory-capture

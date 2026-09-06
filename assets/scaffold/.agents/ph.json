@@ -1,7 +1,7 @@
 {
   "$schema": "./ph.schema.json",
-  "schema_version": "1.0.0",
-  "template_version": "1.0.0",
+  "schema_version": "1.1.0",
+  "template_version": "1.1.0",
   "adapter_mode": "portable",
   "canonical": {
     "root": ".agents",
@@ -71,7 +71,10 @@
       "ph-worktree-exit",
       "ph-memory-capture",
       "ph-memory-archive",
-      "ph-memory-ask"
+      "ph-memory-ask",
+      "ph-intent-capture",
+      "ph-intent-plan",
+      "ph-intent-abandon"
     ]
   }
 }

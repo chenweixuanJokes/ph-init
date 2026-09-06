@@ -41,7 +41,11 @@ REQUIRED_SKILLS = (
     "ph-memory-capture",
     "ph-memory-archive",
     "ph-memory-ask",
+    "ph-intent-capture",
+    "ph-intent-plan",
+    "ph-intent-abandon",
 )
+LOCKED_VERSION = "1.1.0"
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 REL_PATH = re.compile(
     r"^(?!\/)(?!\~\/)(?![A-Za-z]:)(?![a-zA-Z][a-zA-Z0-9+.-]*:)"
@@ -334,7 +338,7 @@ def validate_manifest(data: dict) -> None:
         value = data[key]
         if not isinstance(value, str) or not SEMVER.match(value):
             raise PHError(f"illegal manifest: {key} is not semver")
-        _const(value, "1.0.0", key)
+        _const(value, LOCKED_VERSION, key)
     if data["adapter_mode"] not in MODES:
         raise PHError("illegal manifest: adapter_mode must be portable or symlink")
 
@@ -487,8 +491,20 @@ def ensure_canonical_layout(repo: Path) -> None:
 
 
 def load_repo_manifest(repo: Path) -> dict:
-    ensure_canonical_layout(repo)
+    # Version lock first: an older complete tree must fail closed on schema /
+    # template version, not as a missing-new-skill layout error. Init / check /
+    # sync never upgrade or write a partial 1.1.0 overlay.
     path = repo / ".agents" / "ph.json"
+    if path.is_file() and not path.is_symlink() and not is_disallowed_reparse(path):
+        data = read_json(path)
+        for key in ("schema_version", "template_version"):
+            if key in data:
+                value = data[key]
+                if isinstance(value, str) and SEMVER.match(value) and value != LOCKED_VERSION:
+                    raise PHError(
+                        f"illegal manifest: {key} must be {LOCKED_VERSION!r}, got {value!r}"
+                    )
+    ensure_canonical_layout(repo)
     if path.is_symlink() or is_disallowed_reparse(path):
         raise PHError("canonical .agents/ph.json must be a regular repository-local file")
     data = read_json(path)
@@ -840,7 +856,7 @@ def apply_self_install(repo: Path) -> None:
 
 
 def extra_skill_sources() -> dict[str, Path]:
-    """The five canonical skills installed alongside ph-init."""
+    """The eight canonical skills installed alongside ph-init."""
 
     mapping: dict[str, Path] = {}
     for name in REQUIRED_SKILLS:

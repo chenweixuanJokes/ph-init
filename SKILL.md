@@ -1,11 +1,11 @@
 ---
 name: ph-init
-description: "初始化、检查或同步本仓库的项目级 Harness（PH）：写入 canonical `.agents/`、生成 portable/symlink 适配层、安装 ph-* skills。用户说“初始化 PH”“安装项目级 harness”“检查 PH”“同步 PH”“ph-init”“bootstrap harness”时必须使用。不要把 ZCode 内置 /init、厂商仓库初始化向导、git init、或 ph-memory-* / ph-worktree-* 误判为本技能。"
+description: "初始化、检查或同步本仓库的项目级 Harness（PH）：写入 canonical `.agents/`、生成 portable/symlink 适配层、安装 ph-* skills。用户说“初始化 PH”“安装项目级 harness”“检查 PH”“同步 PH”“ph-init”“bootstrap harness”时必须使用。不要把 ZCode 内置 /init、厂商仓库初始化向导、git init、或 ph-memory-* / ph-worktree-* / ph-intent-* 误判为本技能。"
 ---
 
 # ph-init
 
-把 PH 模板落到目标 Git 仓库，或检查 / 修复适配层。本技能是 PH 的唯一写入器；不要改用 ZCode `/init` 或其它厂商脚手架，那些会分叉 `.agents` 布局。
+把 PH 模板落到目标 Git 仓库，或检查 / 修复适配层。本技能是 PH 初始化结构与适配层的受管写入入口；不要改用 ZCode `/init` 或其它厂商脚手架，那些会分叉 `.agents` 布局。
 
 ## 何时用 / 何时不用
 
@@ -21,6 +21,7 @@ description: "初始化、检查或同步本仓库的项目级 Harness（PH）�
 - `git init` 本身
 - 记住 / 归档 / 查记忆 → `ph-memory-*`
 - 进入 / 退出 worktree → `ph-worktree-*`
+- 录入 / 规划 / 废弃意图 → `ph-intent-*`
 
 ## 路径与自包含
 
@@ -43,6 +44,7 @@ python3 <this-skill>/scripts/ph_init.py sync [--apply] [--mode portable|symlink]
 - `symlink`：上述入口全部是指向 canonical 的直接相对软链。禁止 hardlink / junction。`core.symlinks` 显式为 false 时阻断，不自动改 Git 或 OS 权限；写入前在目标所在文件系统探测软链能力。
 - `init` / `sync` 一律 fail-closed。`sync --apply` 只覆盖结构化的 `content_drift`（已有常规文件字节漂移）；仓外解析、嵌套 symlink/junction、hardlink、未托管多余文件等其它 conflict 保持阻断，不按文案关键词放行。
 - Skill 资源递归遍历显式拒绝嵌套 symlink / junction（目录和文件）。`check` 只读，不写。
+- 本版契约为 PH 1.1.0、九个必需 Skill。旧 1.0.0 仓库需要人工审阅合并规范与清单；`init` 不覆盖定制内容，`sync` 不升级 canonical 或安装缺失的新 Skill。版本不匹配时停止，不强行重跑 `--apply`。
 
 ## 工作流
 

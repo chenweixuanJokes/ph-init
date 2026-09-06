@@ -1,6 +1,6 @@
 ---
 name: ph-memory-archive
-description: "将 `.agents/memory/temporary/` 下的零散临时记忆合并进 `.agents/memory/structured/`，原件移入 `archive/`。只要用户说“归档记忆”“沉淀记忆”“整理临时记忆”“把记忆归档”，或意图是合并零散记忆——即使没说出归档二字——都必须使用。不要把查记忆、记住 X、只回顾当前对话、或改规范/Wiki 误判为本技能。"
+description: "将 `.agents/memory/temporary/` 下的零散临时记忆合并进 `.agents/memory/structured/`，原件移入 `archive/`。只要用户说“归档记忆”“沉淀记忆”“整理临时记忆”“把记忆归档”，或意图是合并零散记忆——即使没说出归档二字——都必须使用。不要把查记忆、记住 X、只回顾当前对话、意图的录入/规划/废弃、或改规范/Wiki 误判为本技能。"
 ---
 
 # ph-memory-archive

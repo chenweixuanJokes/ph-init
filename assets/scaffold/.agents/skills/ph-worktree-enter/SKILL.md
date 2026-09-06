@@ -1,6 +1,6 @@
 ---
 name: ph-worktree-enter
-description: 为当前 Git 项目创建 PH 管理的隔离 worktree，并记录退出时必须使用的源工作区、源分支与任务分支。只要用户明确要求“进入 worktree”“开隔离工作区”“并行开发这个任务”或调用 ph-worktree-enter，都必须使用本技能。普通切换分支、只询问 Git 用法、未授权创建 worktree 时不要使用；源工作区不干净时不要擅自提交、stash 或丢弃改动。
+description: 为当前 Git 项目创建 PH 管理的隔离 worktree，并记录退出时必须使用的源工作区、源分支与任务分支。只要用户明确要求“进入 worktree”“开隔离工作区”“并行开发这个任务”或调用 ph-worktree-enter，都必须使用本技能。普通切换分支、只询问 Git 用法、仅录入或规划意图、未授权创建 worktree 时不要使用；源工作区不干净时不要擅自提交、stash 或丢弃改动。
 ---
 
 # ph-worktree-enter
