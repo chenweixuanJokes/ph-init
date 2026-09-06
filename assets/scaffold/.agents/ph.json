@@ -72,9 +72,9 @@
       "ph-memory-capture",
       "ph-memory-archive",
       "ph-memory-ask",
-      "ph-intent-capture",
-      "ph-intent-plan",
-      "ph-intent-abandon"
+      "ph-intent-new",
+      "ph-intent-impl",
+      "ph-intent-drop"
     ]
   }
 }

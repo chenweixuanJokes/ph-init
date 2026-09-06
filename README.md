@@ -13,9 +13,9 @@ PH（Project Harness）1.1.0 的分发入口：**一个 Skill 自举整套项目
   - `ph-init`：自装后常驻，提供 check / sync
   - `ph-worktree-enter` / `ph-worktree-exit`：进入 / 退出 worktree
   - `ph-memory-capture` / `ph-memory-archive` / `ph-memory-ask`：临时捕获 / 结构化归档 / 只读提问
-  - `ph-intent-capture`：录入或补充意图及访谈纪要
-  - `ph-intent-plan`：准备交接材料后进入**宿主原生计划模式**（本包不提供、也不模拟该切换）
-  - `ph-intent-abandon`：在用户给出真实原因后废弃意图并修复引用
+  - `ph-intent-new`：录入或补充意图及访谈纪要
+  - `ph-intent-impl`：准备交接材料后进入**宿主原生计划模式**（本包不提供、也不模拟该切换）
+  - `ph-intent-drop`：在用户给出真实原因后废弃意图并修复引用
 - `docs/` 三域：`约束规范/`、`意图/`、`项目Wiki/`
 - `.agents/memory/`：`temporary/`、`structured/`、`archive/`
 - 多客户端适配层：

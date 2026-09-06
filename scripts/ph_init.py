@@ -41,9 +41,9 @@ REQUIRED_SKILLS = (
     "ph-memory-capture",
     "ph-memory-archive",
     "ph-memory-ask",
-    "ph-intent-capture",
-    "ph-intent-plan",
-    "ph-intent-abandon",
+    "ph-intent-new",
+    "ph-intent-impl",
+    "ph-intent-drop",
 )
 LOCKED_VERSION = "1.1.0"
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")

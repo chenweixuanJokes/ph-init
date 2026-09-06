@@ -172,9 +172,9 @@
             { "const": "ph-memory-capture" },
             { "const": "ph-memory-archive" },
             { "const": "ph-memory-ask" },
-            { "const": "ph-intent-capture" },
-            { "const": "ph-intent-plan" },
-            { "const": "ph-intent-abandon" }
+            { "const": "ph-intent-new" },
+            { "const": "ph-intent-impl" },
+            { "const": "ph-intent-drop" }
           ],
           "items": false
         }
