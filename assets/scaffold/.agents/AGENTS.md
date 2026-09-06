@@ -22,9 +22,12 @@ docs/
 │   ├── 测试规范/             # 测试要求与验收门禁
 │   └── 架构决策/             # 架构决策及其背景、取舍与后果
 ├── 意图/                     # 希望改变什么，以及相关过程记录
-│   ├── 进行中/
-│   │   ├── 新特性/           # 待推进或正在推进的功能需求
-│   │   └── 问题记录/         # 待处理或正在处理的问题
+│   ├── 待办/
+│   │   ├── 新特性/           # 已录入、尚未启动实施的功能需求
+│   │   └── 问题记录/         # 已录入、尚未启动实施的问题
+│   ├── 实施/
+│   │   ├── 新特性/           # 已启动、覆盖准备到验收的功能需求
+│   │   └── 问题记录/         # 已启动、覆盖准备到验收的问题
 │   ├── 访谈纪要/             # 录入、实施准备、废弃时的问答证据
 │   ├── 已完成/               # 已交付并关闭的意图
 │   └── 已废弃/               # 明确放弃的意图，保留原因与历史
@@ -100,8 +103,8 @@ docs/
 | `.agents/skills/ph-memory-capture/SKILL.md` | 用户要求“记住”时写入 `memory/temporary/` |
 | `.agents/skills/ph-memory-archive/SKILL.md` | 把临时记忆合并进 `memory/structured/` 并移入 `archive/` |
 | `.agents/skills/ph-memory-ask/SKILL.md` | 只读检索记忆并标注来源与有效性 |
-| `.agents/skills/ph-intent-new/SKILL.md` | 录入或补充意图及访谈纪要 |
-| `.agents/skills/ph-intent-impl/SKILL.md` | 准备交接材料后进入原生计划模式 |
-| `.agents/skills/ph-intent-drop/SKILL.md` | 明确原因后废弃意图并修复引用 |
+| `.agents/skills/ph-intent-new/SKILL.md` | 录入或补充意图及访谈纪要；新建入待办，补充保持原目录 |
+| `.agents/skills/ph-intent-impl/SKILL.md` | 可写时先迁实施，再准备交接并进入原生计划模式 |
+| `.agents/skills/ph-intent-drop/SKILL.md` | 明确原因后从待办或实施废弃意图并修复引用 |
 
 发现、触发与 frontmatter 约定遵循 Agent Skills：`name` + `description`（含触发与排除），`description` 不超过 1024 字符。意图字段与纪要规则见 `docs/约束规范/工程规范/意图与访谈.md`。
