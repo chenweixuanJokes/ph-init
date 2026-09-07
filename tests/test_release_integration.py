@@ -56,7 +56,7 @@ class ReleaseIntegrationTests(unittest.TestCase):
             command("git", "-C", str(source), "add", ".")
             command("git", "-C", str(source), "-c", "user.name=PH fixture",
                     "-c", "user.email=fixture@example.com", "commit", "-qm", "fixture release")
-            command("git", "-C", str(source), "tag", "v1.1.1")
+            command("git", "-C", str(source), "tag", "v1.1.2")
             prepared = ph_release.prepare_release("latest", transport=LocalTransport(source),
                                                    parent=workspace / "prepared")
             root = prepared.root
@@ -94,7 +94,7 @@ class ReleaseIntegrationTests(unittest.TestCase):
                     self.assertEqual(state["source"]["commit"], prepared.commit)
                     for item in state["items"]:
                         item.update(status="applied", evidence="Post-merge fixture contains target assets; protected project bytes checked")
-                    record = repo / ".agents/updates/1.1.1"
+                    record = repo / ".agents/updates/1.1.2"
                     record.mkdir(parents=True)
                     (record / "state.json").write_text(json.dumps(state) + "\n")
                     (record / "report.md").write_text("# Local fixture\nPost-merge structural test, not public GitHub verification.\n")

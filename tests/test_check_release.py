@@ -74,7 +74,7 @@ class CheckReleaseTests(unittest.TestCase):
     def test_prepared_tree_errors_are_not_swallowed(self):
         with mock.patch.object(check_release.ph_release, "validate_prepared_tree", side_effect=check_release.ph_release.PHReleaseError("illegal manifest: skills.required_names mismatch")):
             with self.assertRaisesRegex(check_release.CheckError, "skills.required_names mismatch"):
-                check_release._call_prepared_tree(REPO_ROOT, "1.1.1", REQUIRED_SKILLS)
+                check_release._call_prepared_tree(REPO_ROOT, "1.1.2", REQUIRED_SKILLS)
 
     def temp_dir(self, prefix):
         root = Path(tempfile.mkdtemp(prefix=prefix))
@@ -137,7 +137,7 @@ class CheckReleaseTests(unittest.TestCase):
     def test_current_tree_passes_without_tags(self):
         result = check_release.validate_tree(REPO_ROOT, repo=REPO_ROOT, tag=None)
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["version"], "1.1.1")
+        self.assertEqual(result["version"], "1.1.2")
         self.assertEqual(result["schema_version"], "1.1.1")
         self.assertEqual(result["required_skills"], REQUIRED_SKILLS)
 
@@ -149,7 +149,7 @@ class CheckReleaseTests(unittest.TestCase):
         self.assertEqual(code, 0, err.getvalue())
         data = json.loads(buf.getvalue())
         self.assertEqual(data["status"], "ok")
-        self.assertEqual(data["version"], "1.1.1")
+        self.assertEqual(data["version"], "1.1.2")
 
     def test_root_skill_codeblock_placeholder_is_not_a_broken_link(self):
         repo = self.git_repo("ph-check-fence-")
@@ -202,8 +202,8 @@ class CheckReleaseTests(unittest.TestCase):
 
     def test_temp_git_same_version_non_payload_change_passes(self):
         repo = self.git_repo("ph-check-nonpayload-")
-        self.commit_all(repo, "v1.1.1")
-        proc = run(["git", "tag", "-a", "v1.1.1", "-m", "v1.1.1"], cwd=repo)
+        self.commit_all(repo, "v1.1.2")
+        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
         (repo / "README.md").write_text("# docs only\n", encoding="utf-8")
         (repo / ".github").mkdir(exist_ok=True)
@@ -218,8 +218,8 @@ class CheckReleaseTests(unittest.TestCase):
 
     def test_temp_git_same_version_payload_change_rejected(self):
         repo = self.git_repo("ph-check-payload-")
-        self.commit_all(repo, "v1.1.1")
-        proc = run(["git", "tag", "-a", "v1.1.1", "-m", "v1.1.1"], cwd=repo)
+        self.commit_all(repo, "v1.1.2")
+        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
         skill = repo / "assets/scaffold/.agents/skills/ph-merge-update/SKILL.md"
         skill.write_text(skill.read_text(encoding="utf-8") + "\nextra payload line\n", encoding="utf-8")
@@ -227,75 +227,75 @@ class CheckReleaseTests(unittest.TestCase):
 
     def test_new_patch_without_migration_record_rejected(self):
         repo = self.git_repo("ph-check-missing-hop-")
-        self.commit_all(repo, "v1.1.1")
-        proc = run(["git", "tag", "-a", "v1.1.1", "-m", "v1.1.1"], cwd=repo)
+        self.commit_all(repo, "v1.1.2")
+        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
-        self.mutate_release(repo, version="1.1.2")
-        self.mutate_manifest(repo, template_version="1.1.2")
-        self.assert_fails(repo, "missing migration record 1.1.1 -> 1.1.2")
+        self.mutate_release(repo, version="1.1.3")
+        self.mutate_manifest(repo, template_version="1.1.3")
+        self.assert_fails(repo, "missing migration record 1.1.2 -> 1.1.3")
 
     def test_new_patch_with_complete_record_passes(self):
         repo = self.git_repo("ph-check-next-")
-        self.commit_all(repo, "v1.1.1")
-        proc = run(["git", "tag", "-a", "v1.1.1", "-m", "v1.1.1"], cwd=repo)
+        self.commit_all(repo, "v1.1.2")
+        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
-        self.mutate_release(repo, version="1.1.2")
-        self.mutate_manifest(repo, template_version="1.1.2")
+        self.mutate_release(repo, version="1.1.3")
+        self.mutate_manifest(repo, template_version="1.1.3")
         hops = json.loads((repo / "migrations/index.json").read_text(encoding="utf-8"))["migrations"]
         hops.append(
             {
-                "from_version": "1.1.1",
-                "to_version": "1.1.2",
-                "path": "migrations/1.1.1-to-1.1.2.md",
+                "from_version": "1.1.2",
+                "to_version": "1.1.3",
+                "path": "migrations/1.1.2-to-1.1.3.md",
                 "items": ["docs-only"],
             }
         )
         self.set_index(repo, hops)
-        (repo / "migrations/1.1.1-to-1.1.2.md").write_text(
-            "# 1.1.1 → 1.1.2\n\n"
-            "## why\npatch\n\n## from\n1.1.1\n\n## to\n1.1.2\n\n"
+        (repo / "migrations/1.1.2-to-1.1.3.md").write_text(
+            "# 1.1.2 → 1.1.3\n\n"
+            "## why\npatch\n\n## from\n1.1.2\n\n## to\n1.1.3\n\n"
             "## affected\ndocs-only\n\n## preserve\nnone\n\n"
             "## conflict\nnone\n\n## verify\nok\n",
             encoding="utf-8",
         )
         result = check_release.validate_tree(repo, repo=repo, tag=None)
-        self.assertEqual(result["version"], "1.1.2")
+        self.assertEqual(result["version"], "1.1.3")
 
     def test_tag_validation_requires_matching_commit_and_meta(self):
         repo = self.git_repo("ph-check-tag-")
-        commit = self.commit_all(repo, "v1.1.1")
-        proc = run(["git", "tag", "-a", "v1.1.1", "-m", "v1.1.1"], cwd=repo)
+        commit = self.commit_all(repo, "v1.1.2")
+        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
-        result = check_release.validate_tree(repo, repo=repo, tag="v1.1.1")
+        result = check_release.validate_tree(repo, repo=repo, tag="v1.1.2")
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(run(["git", "rev-parse", "v1.1.1^{}"], cwd=repo).stdout.strip(), commit)
+        self.assertEqual(run(["git", "rev-parse", "v1.1.2^{}"], cwd=repo).stdout.strip(), commit)
 
-        self.mutate_release(repo, version="1.1.2")
-        self.mutate_manifest(repo, template_version="1.1.2")
+        self.mutate_release(repo, version="1.1.3")
+        self.mutate_manifest(repo, template_version="1.1.3")
         hops = json.loads((repo / "migrations/index.json").read_text(encoding="utf-8"))["migrations"]
         hops.append(
             {
-                "from_version": "1.1.1",
-                "to_version": "1.1.2",
-                "path": "migrations/1.1.1-to-1.1.2.md",
+                "from_version": "1.1.2",
+                "to_version": "1.1.3",
+                "path": "migrations/1.1.2-to-1.1.3.md",
                 "items": ["docs-only"],
             }
         )
         self.set_index(repo, hops)
-        (repo / "migrations/1.1.1-to-1.1.2.md").write_text(
-            "# 1.1.1 → 1.1.2\n\n## why\n\n## from\n\n## to\n\n## affected\ndocs-only\n\n## preserve\n\n## conflict\n\n## verify\n",
+        (repo / "migrations/1.1.2-to-1.1.3.md").write_text(
+            "# 1.1.2 → 1.1.3\n\n## why\n\n## from\n\n## to\n\n## affected\ndocs-only\n\n## preserve\n\n## conflict\n\n## verify\n",
             encoding="utf-8",
         )
-        self.assert_fails(repo, "does not match release.json version", tag="v1.1.1")
+        self.assert_fails(repo, "does not match release.json version", tag="v1.1.2")
 
         repo = self.git_repo("ph-check-tag-head-")
-        self.commit_all(repo, "v1.1.1")
-        proc = run(["git", "tag", "-a", "v1.1.1", "-m", "v1.1.1"], cwd=repo)
+        self.commit_all(repo, "v1.1.2")
+        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
         (repo / "README.md").write_text("# later\n", encoding="utf-8")
         later = self.commit_all(repo, "later")
-        self.assertNotEqual(later, run(["git", "rev-parse", "v1.1.1^{}"], cwd=repo).stdout.strip())
-        self.assert_fails(repo, "does not match HEAD", tag="v1.1.1")
+        self.assertNotEqual(later, run(["git", "rev-parse", "v1.1.2^{}"], cwd=repo).stdout.strip())
+        self.assert_fails(repo, "does not match HEAD", tag="v1.1.2")
 
     def test_mocked_git_tags_reject_payload_rewrite_of_published_version(self):
         repo = self.temp_dir("ph-check-mock-")

@@ -731,8 +731,8 @@ def validate_version_discipline(
         return
 
     if not tags:
-        if version != "1.1.1":
-            raise CheckError("first unpublished tree must use version 1.1.1")
+        if semver_tuple(version) < (1, 1, 1):
+            raise CheckError("tree without visible tags must use version >= 1.1.1")
         chain_to(hops, version)
         assert_all_old_entries_reach(hops, version)
         return

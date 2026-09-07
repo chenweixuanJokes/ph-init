@@ -39,6 +39,8 @@ CHAIN_110 = [
     "merge-update",
     "schema-contract",
     "project-content",
+    "intent-no-completed",
+    "intent-legacy-inprogress",
 ]
 CHAIN_100 = ["intent-domain", *CHAIN_110]
 
@@ -183,7 +185,7 @@ class MergeUpdateTests(unittest.TestCase):
     def seed_gitignore(self, repo: Path) -> None:
         (repo / ".gitignore").write_text("/.worktrees/\n", encoding="utf-8")
 
-    def receipt(self, version="1.1.1"):
+    def receipt(self, version="1.1.2"):
         return {"version": version, "tag": f"v{version}", "commit": COMMIT, "source": FIXED_SOURCE}
 
     def install_receipt(self, verified=True, can_finalize=True, receipt=None, reason="ok"):
@@ -202,12 +204,12 @@ class MergeUpdateTests(unittest.TestCase):
         ids = items or CHAIN_110
         data = {
             "from_version": from_version,
-            "to_version": "1.1.1",
+            "to_version": "1.1.2",
             "source": {"repository": FIXED_SOURCE, "tag": receipt["tag"], "commit": receipt["commit"]},
             "status": status,
             "items": [{"id": i, "status": "applied", "evidence": f"ok:{i}"} for i in ids],
         }
-        dest = repo / ".agents" / "updates" / "1.1.1"
+        dest = repo / ".agents" / "updates" / "1.1.2"
         dest.mkdir(parents=True, exist_ok=True)
         self.write_json(dest / "state.json", data)
         (dest / "report.md").write_text("# report\nkept project_fact\n", encoding="utf-8")
@@ -270,9 +272,9 @@ class MergeUpdateTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         data = self.load(out)
         self.assertEqual(data["from"], "1.1.0")
-        self.assertEqual(data["to"], "1.1.1")
+        self.assertEqual(data["to"], "1.1.2")
         self.assertEqual(data["profile"], "1.1.0-current-names")
-        self.assertEqual([h["from"] for h in data["chain"]], ["1.1.0"])
+        self.assertEqual([h["from"] for h in data["chain"]], ["1.1.0", "1.1.1"])
         self.assertFalse(data["source"]["verified"])
         self.assertFalse(data["can_finalize"])
         self.assertIn("cannot finalize", data["source"]["reason"])
@@ -346,14 +348,14 @@ class MergeUpdateTests(unittest.TestCase):
         self.install_receipt()
         state = self.write_state(repo)
         state["items"][0]["status"] = "pending"
-        self.write_json(repo / ".agents" / "updates" / "1.1.1" / "state.json", state)
+        self.write_json(repo / ".agents" / "updates" / "1.1.2" / "state.json", state)
         code, _out, err = self.invoke("verify", "--repo", str(repo))
         self.assertEqual(code, 2)
         self.assertIn("intent-skill-names", err)
 
         state["items"][0]["status"] = "applied"
         state["items"][0]["evidence"] = "   "
-        self.write_json(repo / ".agents" / "updates" / "1.1.1" / "state.json", state)
+        self.write_json(repo / ".agents" / "updates" / "1.1.2" / "state.json", state)
         code, _out, err = self.invoke("verify", "--repo", str(repo))
         self.assertEqual(code, 2)
         self.assertIn("evidence", err)
@@ -384,7 +386,7 @@ class MergeUpdateTests(unittest.TestCase):
         self.assertEqual((repo / ".agents" / "ph.json").read_bytes(), before)
         self.assertIn("keep-me", (repo / ".agents" / "AGENTS.md").read_text(encoding="utf-8"))
         self.assertEqual((repo / "docs/意图/进行中/新特性/INT-keep.md").read_bytes(), legacy)
-        self.assertEqual(json.loads((repo / ".agents" / "updates" / "1.1.1" / "state.json").read_text())["status"], "in_progress")
+        self.assertEqual(json.loads((repo / ".agents" / "updates" / "1.1.2" / "state.json").read_text())["status"], "in_progress")
         self.assertEqual(fact, (repo / ".agents" / "AGENTS.md").read_text(encoding="utf-8"))
 
     def test_finalize_apply_portable_and_recovery(self):
@@ -399,12 +401,12 @@ class MergeUpdateTests(unittest.TestCase):
         data = self.load(out)
         self.assertTrue(data["complete"])
         written = json.loads((repo / ".agents" / "ph.json").read_text(encoding="utf-8"))
-        self.assertEqual(written["template_version"], "1.1.1")
+        self.assertEqual(written["template_version"], "1.1.2")
         self.assertEqual(written["schema_version"], "1.1.1")
         self.assertEqual(written["adapter_mode"], "portable")
         self.assertEqual(written["project_note"], "keep-user-field")
         self.assertEqual(written["skills"]["required_names"], TARGET_SKILLS)
-        self.assertEqual(json.loads((repo / ".agents" / "updates" / "1.1.1" / "state.json").read_text())["status"], "complete")
+        self.assertEqual(json.loads((repo / ".agents" / "updates" / "1.1.2" / "state.json").read_text())["status"], "complete")
         self.assertIn("keep-me", (repo / ".agents" / "AGENTS.md").read_text(encoding="utf-8"))
 
         # complete rerun must re-verify live files
@@ -415,9 +417,9 @@ class MergeUpdateTests(unittest.TestCase):
 
         # versions written, state not complete -> recover
         (repo / "docs/意图/待办/README.md").write_bytes((SCAFFOLD / "docs/意图/待办/README.md").read_bytes())
-        state = json.loads((repo / ".agents" / "updates" / "1.1.1" / "state.json").read_text())
+        state = json.loads((repo / ".agents" / "updates" / "1.1.2" / "state.json").read_text())
         state["status"] = "in_progress"
-        self.write_json(repo / ".agents" / "updates" / "1.1.1" / "state.json", state)
+        self.write_json(repo / ".agents" / "updates" / "1.1.2" / "state.json", state)
         code, out, err = self.invoke("finalize", "--apply", "--repo", str(repo))
         self.assertEqual(code, 0, err)
         self.assertTrue(self.load(out)["complete"])
@@ -432,7 +434,7 @@ class MergeUpdateTests(unittest.TestCase):
         self.assertEqual(data["mode"], "symlink")
         written = json.loads((repo / ".agents" / "ph.json").read_text(encoding="utf-8"))
         self.assertEqual(written["adapter_mode"], "symlink")
-        self.assertEqual(written["template_version"], "1.1.1")
+        self.assertEqual(written["template_version"], "1.1.2")
         self.assertTrue((repo / "AGENTS.md").is_symlink())
 
     def test_finalize_blocked_does_not_mark_complete(self):
@@ -451,7 +453,7 @@ class MergeUpdateTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("candidate check failed", err)
         self.assertEqual((repo / ".agents" / "ph.json").read_bytes(), original)
-        self.assertEqual(json.loads((repo / ".agents" / "updates" / "1.1.1" / "state.json").read_text())["status"], "in_progress")
+        self.assertEqual(json.loads((repo / ".agents" / "updates" / "1.1.2" / "state.json").read_text())["status"], "in_progress")
 
     def test_finalize_without_receipt_is_blocked(self):
         repo = self.fixture_110_current()
@@ -483,7 +485,7 @@ class MergeUpdateTests(unittest.TestCase):
             "project_note": "keep",
             "skills": {"root": ".agents/skills", "required_names": BASE_SKILLS + NEW_INTENT},
         }
-        cand = ph_merge_update.build_candidate(data, "1.1.1", "1.1.1", tuple(TARGET_SKILLS))
+        cand = ph_merge_update.build_candidate(data, "1.1.2", "1.1.1", tuple(TARGET_SKILLS))
         self.assertEqual(cand["project_note"], "keep")
         self.assertEqual(cand["adapter_mode"], "portable")
         self.assertEqual(cand["skills"]["required_names"], TARGET_SKILLS)
@@ -508,7 +510,7 @@ class MergeUpdateTests(unittest.TestCase):
     def test_inspect_complete_target_is_up_to_date(self):
         repo = self.git_repo("ph-merge-current-")
         names = TARGET_SKILLS
-        self.write_manifest(repo, version="1.1.1", names=names)
+        self.write_manifest(repo, version="1.1.2", names=names, extra={"schema_version": "1.1.1"})
         self.write_agents(repo)
         self.seed_target_skills(repo)
         self.write_intent_layout(repo)
@@ -517,12 +519,12 @@ class MergeUpdateTests(unittest.TestCase):
         code, out, err = self.invoke("inspect", "--repo", str(repo))
         self.assertEqual(code, 0, err)
         data = self.load(out)
-        self.assertEqual(data["from"], "1.1.1")
-        self.assertEqual(data["to"], "1.1.1")
+        self.assertEqual(data["from"], "1.1.2")
+        self.assertEqual(data["to"], "1.1.2")
         self.assertTrue(data["up_to_date"])
         self.assertIsNone(data["suggested_state"])
         self.assertFalse(data["can_finalize"])
-        self.assertFalse((repo / ".agents" / "updates" / "1.1.1" / "state.json").exists())
+        self.assertFalse((repo / ".agents" / "updates" / "1.1.2" / "state.json").exists())
 
     def test_inspect_keeps_state_from_and_rejects_unrelated_disk_version(self):
         repo = self.git_repo("ph-merge-interrupt-")
@@ -536,7 +538,7 @@ class MergeUpdateTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("neither from", err)
 
-        self.write_manifest(repo, version="1.1.1", names=names)
+        self.write_manifest(repo, version="1.1.2", names=names, extra={"schema_version": "1.1.1"})
         code, out, err = self.invoke("inspect", "--repo", str(repo))
         self.assertEqual(code, 0, err)
         data = self.load(out)
@@ -625,7 +627,7 @@ class MergeUpdateTests(unittest.TestCase):
         updates_out.mkdir()
         (repo / ".agents" / "updates").symlink_to(updates_out)
         with self.assertRaises(ph_init.PHError) as ctx:
-            ph_merge_update.updates_dir(repo, "1.1.1")
+            ph_merge_update.updates_dir(repo, "1.1.2")
         self.assertIn("symlink", str(ctx.exception))
         code, _out, err = self.invoke("inspect", "--repo", str(repo))
         self.assertEqual(code, 2)
@@ -694,7 +696,7 @@ class MergeUpdateTests(unittest.TestCase):
                     code, _out, err = self.invoke("finalize", "--apply", "--repo", str(repo))
         self.assertEqual(code, 2)
         self.assertIn("regular check", err)
-        self.assertEqual(json.loads((repo / ".agents" / "updates" / "1.1.1" / "state.json").read_text())["status"], "in_progress")
+        self.assertEqual(json.loads((repo / ".agents" / "updates" / "1.1.2" / "state.json").read_text())["status"], "in_progress")
         self.assertNotEqual((repo / ".agents" / "ph.json").read_bytes(), original)
 
     def test_source_receipt_requires_git_objects(self):
@@ -703,7 +705,7 @@ class MergeUpdateTests(unittest.TestCase):
         (fake_root / ".ph-source.json").write_text(json.dumps(receipt) + "\n", encoding="utf-8")
         (fake_root / "release.json").write_text("{}\n", encoding="utf-8")
         with mock.patch.object(ph_merge_update, "SOURCE_ROOT", fake_root):
-            status = ph_merge_update.source_status("1.1.1")
+            status = ph_merge_update.source_status("1.1.2")
         self.assertFalse(status["verified"])
         self.assertIn("prepared git objects", status["reason"])
 
@@ -715,12 +717,12 @@ class MergeUpdateTests(unittest.TestCase):
         run(["git", "init", "--bare", "--template="], cwd=git_dir)
         (root / ".ph-source.json").write_text(json.dumps(self.receipt("9.9.9")) + "\n", encoding="utf-8")
         with mock.patch.object(ph_merge_update, "SOURCE_ROOT", root):
-            status = ph_merge_update.source_status("1.1.1")
+            status = ph_merge_update.source_status("1.1.2")
         self.assertFalse(status["verified"])
 
     def _seed_release_tree(self, root: Path) -> None:
         files = {
-            "release.json": '{"version":"1.1.1"}\n',
+            "release.json": '{"version":"1.1.2"}\n',
             "SKILL.md": "# skill\n",
             "scripts/ph_init.py": "print(1)\n",
             "scripts/ph_release.py": "print(2)\n",
@@ -748,21 +750,21 @@ class MergeUpdateTests(unittest.TestCase):
         ):
             self.assertEqual(run(argv, cwd=src).returncode, 0)
         self.assertEqual(run(["git", "add", "."], cwd=src).returncode, 0)
-        self.assertEqual(run(["git", "commit", "-m", "v1.1.1"], cwd=src).returncode, 0)
-        self.assertEqual(run(["git", "tag", "v1.1.1"], cwd=src).returncode, 0)
+        self.assertEqual(run(["git", "commit", "-m", "v1.1.2"], cwd=src).returncode, 0)
+        self.assertEqual(run(["git", "tag", "v1.1.2"], cwd=src).returncode, 0)
         commit = run(["git", "rev-parse", "HEAD"], cwd=src).stdout.strip()
         git_dir = workspace / "git"
         cloned = run(["git", "clone", "--bare", "--template=", str(src), str(git_dir)])
         self.assertEqual(cloned.returncode, 0, cloned.stderr)
         root = workspace / "root"
         copy_tree(src, root)
-        receipt = {"version": "1.1.1", "tag": "v1.1.1", "commit": commit, "source": FIXED_SOURCE}
+        receipt = {"version": "1.1.2", "tag": "v1.1.2", "commit": commit, "source": FIXED_SOURCE}
         (root / ".ph-source.json").write_text(json.dumps(receipt) + "\n", encoding="utf-8")
         with mock.patch.object(ph_merge_update, "SOURCE_ROOT", root):
-            status = ph_merge_update.source_status("1.1.1")
+            status = ph_merge_update.source_status("1.1.2")
             self.assertTrue(status["verified"], status["reason"])
             (root / "assets/scaffold/docs/意图/_模板.md").write_text('status_dir: 已废弃\n', encoding="utf-8")
-            status = ph_merge_update.source_status("1.1.1")
+            status = ph_merge_update.source_status("1.1.2")
         self.assertFalse(status["verified"])
         self.assertIn("does not match commit", status["reason"])
 
@@ -770,16 +772,16 @@ class MergeUpdateTests(unittest.TestCase):
         src = self.git_repo("ph-merge-devsrc-")
         self._seed_release_tree(src)
         self.assertEqual(run(["git", "add", "."], cwd=src).returncode, 0)
-        self.assertEqual(run(["git", "commit", "-m", "v1.1.1"], cwd=src).returncode, 0)
-        self.assertEqual(run(["git", "tag", "v1.1.1"], cwd=src).returncode, 0)
+        self.assertEqual(run(["git", "commit", "-m", "v1.1.2"], cwd=src).returncode, 0)
+        self.assertEqual(run(["git", "tag", "v1.1.2"], cwd=src).returncode, 0)
         commit = run(["git", "rev-parse", "HEAD"], cwd=src).stdout.strip()
-        receipt = {"version": "1.1.1", "tag": "v1.1.1", "commit": commit, "source": FIXED_SOURCE}
+        receipt = {"version": "1.1.2", "tag": "v1.1.2", "commit": commit, "source": FIXED_SOURCE}
         (src / ".ph-source.json").write_text(json.dumps(receipt) + "\n", encoding="utf-8")
         with mock.patch.object(ph_merge_update, "SOURCE_ROOT", src):
-            status = ph_merge_update.source_status("1.1.1")
+            status = ph_merge_update.source_status("1.1.2")
             self.assertTrue(status["verified"], status["reason"])
             (src / "SKILL.md").write_text("# dirty\n", encoding="utf-8")
-            status = ph_merge_update.source_status("1.1.1")
+            status = ph_merge_update.source_status("1.1.2")
         self.assertFalse(status["verified"])
         self.assertIn("does not match commit", status["reason"])
 

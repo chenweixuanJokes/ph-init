@@ -4,7 +4,7 @@ PH（Project Harness）的正式分发入口。唯一源：
 
 `https://github.com/chenweixuanJokes/ph-init.git`
 
-本批发布为 **1.1.1**（Schema **1.1.1**，十个必需 Skill）。`latest` 取数值最大的稳定 tag，排除预发布与非版本标签，并固定到该 tag 的 commit。尚无稳定 tag 或查询失败时，初始化必须停止，不能把 `main`、工作区或眼前这份本地 `assets/scaffold` 当成最新正式版。
+本批发布为 **1.1.2**（Schema **1.1.1**，十个必需 Skill）。`latest` 取数值最大的稳定 tag，排除预发布与非版本标签，并固定到该 tag 的 commit。尚无稳定 tag 或查询失败时，初始化必须停止，不能把 `main`、工作区或眼前这份本地 `assets/scaffold` 当成最新正式版。
 
 本仓库是安装与升级材料，不是实施模板全集。`init` / `check` / `sync` 仍只做安装、检查与适配层同步。已接入项目升正式版用 `ph-merge-update`，不要 `init --apply` 覆盖定制，不要在目标仓库 `git pull`。
 
@@ -22,7 +22,7 @@ Schema 与发布版本独立维护。本批因九 Skill / `1.1.0` 锁变为十 S
 - `docs/` 三域与 `.agents/memory/` 三层
 - portable（默认）或 symlink 适配层，规则与安全边界同发行根 `SKILL.md`
 
-意图目录现行为 `待办/` 与 `实施/`。旧 `进行中/` 只按需兼容，不批量改派。细则在项目文档，不在本 README 展开生命周期。
+意图目录现行为 `待办/` 与 `实施/`；不设 `已完成/`，交付的意图留在 `实施/` 并在记录注明结果。旧 `进行中/` 状态取消，存量条目按是否已启动迁入待办或实施。细则在项目文档，不在本 README 展开生命周期。
 
 ## 根安装入口（clone 后准备正式版）
 
@@ -82,7 +82,7 @@ python3 <root>/scripts/ph_merge_update.py finalize --repo /path/to/target-repo  
 python3 <root>/scripts/ph_merge_update.py finalize --apply --repo /path/to/target-repo
 ```
 
-进度在项目 `.agents/updates/<to_version>/state.json` 与 `report.md`。candidate check 通过前不改磁盘 `ph.json` 版本。旧 `进行中/` 业务条目默认保留。冲突停止受影响项。不自动 commit / push / 公开仓库。
+进度在项目 `.agents/updates/<to_version>/state.json` 与 `report.md`。candidate check 通过前不改磁盘 `ph.json` 版本。旧 `进行中/` 存量条目按是否已启动迁入待办或实施。冲突停止受影响项。不自动 commit / push / 公开仓库。
 
 历史六 Skill、两套 1.1.0 命名、已提前落地的待办/实施，都必须按文件实态识别。迁移说明：[migrations/README.md](./migrations/README.md)。
 
