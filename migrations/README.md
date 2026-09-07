@@ -46,3 +46,5 @@
 | --- | --- | --- |
 | [1.0.0 → 1.1.0](./1.0.0-to-1.1.0.md) | 历史补录：意图域与三 Skill | `intent-domain` |
 | [1.1.0 → 1.1.1](./1.1.0-to-1.1.1.md) | 首个正式发布批次 | `intent-skill-names` `intent-lifecycle` `online-source` `merge-update` `schema-contract` `project-content` |
+| [1.1.1 → 1.1.2](./1.1.1-to-1.1.2.md) | 意图交付留实施，取消旧状态目录 | `intent-no-completed` `intent-legacy-inprogress` |
+| [1.1.2 → 1.1.3](./1.1.2-to-1.1.3.md) | init 会话补全文档与项目内容保护 | `init-docs-workflow` `docs-guidance` `docs-project-preserve` |

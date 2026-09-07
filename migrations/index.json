@@ -30,6 +30,16 @@
         "intent-no-completed",
         "intent-legacy-inprogress"
       ]
+    },
+    {
+      "from_version": "1.1.2",
+      "to_version": "1.1.3",
+      "path": "migrations/1.1.2-to-1.1.3.md",
+      "items": [
+        "init-docs-workflow",
+        "docs-guidance",
+        "docs-project-preserve"
+      ]
     }
   ]
 }

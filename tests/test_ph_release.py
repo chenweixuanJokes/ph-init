@@ -587,7 +587,8 @@ class PhReleaseTests(unittest.TestCase):
         )
 
     def test_real_repo_tree_validates_and_uses_real_migration_schema(self):
-        ph_release.validate_prepared_tree(REPO_ROOT, "1.1.2")
+        version = json.loads((REPO_ROOT / "release.json").read_text(encoding="utf-8"))["version"]
+        ph_release.validate_prepared_tree(REPO_ROOT, version)
         index = json.loads((REPO_ROOT / "migrations/index.json").read_text(encoding="utf-8"))
         self.assertEqual(index["format_version"], 1)
         self.assertEqual(index["migrations"][0]["from_version"], "1.0.0")

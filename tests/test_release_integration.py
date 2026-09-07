@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CURRENT = json.loads((ROOT / "release.json").read_text())["version"]
 sys.path.insert(0, str(ROOT / "scripts"))
 import ph_release
 
@@ -56,7 +57,7 @@ class ReleaseIntegrationTests(unittest.TestCase):
             command("git", "-C", str(source), "add", ".")
             command("git", "-C", str(source), "-c", "user.name=PH fixture",
                     "-c", "user.email=fixture@example.com", "commit", "-qm", "fixture release")
-            command("git", "-C", str(source), "tag", "v1.1.2")
+            command("git", "-C", str(source), "tag", f"v{CURRENT}")
             prepared = ph_release.prepare_release("latest", transport=LocalTransport(source),
                                                    parent=workspace / "prepared")
             root = prepared.root
@@ -86,7 +87,12 @@ class ReleaseIntegrationTests(unittest.TestCase):
                     legacy.write_text("# Original intent\nDo not reclassify.\n")
                     pending = repo / "docs/意图/待办/新特性/README.md"
                     pending.write_text(pending.read_text() + "\nCustom project index entry\n")
-                    retained = (agents.read_bytes(), legacy.read_bytes(), pending.read_bytes())
+                    wiki = repo / "docs/项目Wiki/项目概述.md"
+                    rules = repo / "docs/约束规范/后端规范/后端规范.md"
+                    wiki.write_text(wiki.read_text() + "\nReviewed subagent project facts\n")
+                    rules.write_text(rules.read_text() + "\nProject-specific approved exception\n")
+                    retained_paths = (agents, legacy, pending, wiki, rules)
+                    retained = tuple(path.read_bytes() for path in retained_paths)
                     inspected = json.loads(command(sys.executable, str(merge), "inspect", "--repo", str(repo)))
                     self.assertTrue(inspected["source"]["verified"], inspected["source"])
                     state = inspected["suggested_state"]
@@ -94,7 +100,7 @@ class ReleaseIntegrationTests(unittest.TestCase):
                     self.assertEqual(state["source"]["commit"], prepared.commit)
                     for item in state["items"]:
                         item.update(status="applied", evidence="Post-merge fixture contains target assets; protected project bytes checked")
-                    record = repo / ".agents/updates/1.1.2"
+                    record = repo / ".agents/updates" / CURRENT
                     record.mkdir(parents=True)
                     (record / "state.json").write_text(json.dumps(state) + "\n")
                     (record / "report.md").write_text("# Local fixture\nPost-merge structural test, not public GitHub verification.\n")
@@ -103,7 +109,7 @@ class ReleaseIntegrationTests(unittest.TestCase):
                     command(sys.executable, str(merge), "finalize", "--repo", str(repo))
                     self.assertEqual(before, digest(repo))
                     command(sys.executable, str(merge), "finalize", "--apply", "--repo", str(repo))
-                    self.assertEqual(retained, (agents.read_bytes(), legacy.read_bytes(), pending.read_bytes()))
+                    self.assertEqual(retained, tuple(path.read_bytes() for path in retained_paths))
                     command(sys.executable, str(installed), "check", "--repo", str(repo))
                     result = json.loads(command(sys.executable, str(merge), "inspect", "--repo", str(repo)))
                     self.assertTrue(result["up_to_date"])

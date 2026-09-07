@@ -42,6 +42,24 @@
       "prompt": "把导出需求录成意图，不要动 harness。",
       "expected_output": "不触发 ph-init 或 ph-merge-update；属于 ph-intent-new。",
       "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "这个存量仓没装 PH，已有 docs/README.md、Java 后端和单测，没有前端，也没用 Kong/Eureka/Apollo。初始化并根据真实代码补齐 Wiki 和规范。",
+      "expected_output": "先 prepare 固定正式 commit、只读盘点、dry-run；安全同名 docs 保留待会话审阅，不搬走强盖。获授权安装后分阶段派发 subagent，按实际 Java/框架版本实时查官方资料，补 Wiki/工程/后端/测试规范；前端及未使用中间件标不适用。不猜 owner、不造意图/历史决策/测试通过。canonical 修改后原 mode sync/check。分别报告安装和文档结果。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 9,
+      "prompt": "正式发行根已准备且安装通过，现在公网查询失败，项目没有自动化测试。继续本次 init 文档补全，不要改业务代码。",
+      "expected_output": "不因资料联网失败重装或回退旧包，保留本地已核验事实。来源及建议标待核实；可列待实现/未执行用例草案，不编造测试实现或通过记录。网络与子任务缺口单独报告，安装check成功不代表文档完成。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 10,
+      "prompt": "继续上次 init 的 Wiki 补全：概述已写完，后端架构还没写；外部最佳实践与我们的显式规范相反。",
+      "expected_output": "按已装指引、上次记录和磁盘实态续做，不重跑 init，不替换已核验概述。冲突项保留原规则并停受影响写入，外部建议未生效；其余授权范围可继续，最终列已验/待核实/冲突项。本 eval 不表示已实测。",
+      "files": []
     }
   ]
 }

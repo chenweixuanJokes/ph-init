@@ -31,7 +31,7 @@ description: "把已安装 PH 的项目合并升级到正式发行版：从唯�
 准备（下载在目标仓库外）：
 
 ```text
-python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.1 --repo <target>
+python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.3 --repo <target>
 ```
 
 stdout JSON 字段：`root` `version` `tag` `commit` `source`。`source` 是固定仓库 URL 字符串。本地已有该 commit 的检查不访问网络。
@@ -54,17 +54,27 @@ python3 <release-root>/scripts/ph_merge_update.py finalize [--apply] --repo <tar
 
 ```json
 {
-  "from_version": "1.1.0",
-  "to_version": "1.1.1",
+  "from_version": "1.1.2",
+  "to_version": "1.1.3",
   "source": {
     "repository": "https://github.com/chenweixuanJokes/ph-init.git",
-    "tag": "v1.1.1",
+    "tag": "v1.1.3",
     "commit": "<40-hex>"
   },
   "status": "in_progress",
   "items": [
     {
-      "id": "intent-skill-names",
+      "id": "init-docs-workflow",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "docs-guidance",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "docs-project-preserve",
       "status": "pending",
       "evidence": ""
     }
@@ -87,7 +97,7 @@ python3 <release-root>/scripts/ph_merge_update.py finalize [--apply] --repo <tar
    - 工作区已有 `待办/` `实施/`，版本锁仍可能是 `1.1.0`
    不能因 `template_version=1.1.0` 猜是哪一套。未知布局或缺迁移记录则阻断。
 4. **建或恢复清单**。读 `<release-root>/migrations/index.json` 与从 `from_version` 到目标的说明。已有 `state.json` 时对照文件实态：已落地不重做、不重复插入章节。版本已写成目标但 `report` / 项未完成 → 继续验收，不跳过。
-5. **按项合并**（用户确认后才写盘）。框架资产更新到目标态。AGENTS、规范、README 按段落合并，保留已填项目事实。业务文档只做说明要求的索引/导航，不改访谈原话、历史代码块、业务编号、无关 Wiki/记忆。旧 `进行中/` 条目默认保留，不批量判断业务状态。
+5. **按项合并**（用户确认后才写盘）。框架资产更新到目标态。AGENTS、规范、README 按段落合并，保留已填项目事实。业务文档只做迁移要求的调整，不改访谈原话、历史代码块、业务编号、无关 Wiki/记忆。init 会话中 subagent 生成的文档同样属于项目定制；不因升级重新生成 Wiki、全网调研或替换技术栈。新指引补缺与项目正文分开审阅，只有另行授权补全时才执行扩展调研。旧意图目录按完整链的最终迁移要求处理，不能仅按旧模板猜业务状态。
 6. **冲突**。与项目显式规则或本地定制相反 → 该项 `blocked`，停受影响写入，请用户决定。旧 Skill 重命名退役须审阅备份；有定制不静默删。根 AGENTS 在而 canonical 不在、仓外软链、嵌套 symlink/junction、受跟踪 `.worktrees/`：fail-closed。
 7. **verify**。项无 `pending`/`blocked`，十 Skill 与目录实态符合目标，`report.md` 完整。不通过不 finalize。
 8. **finalize**。先 dry-run。用户确认后 `--apply`：同步候选适配层（不改 mode），candidate check 通过前不改磁盘 `ph.json` 版本；通过后再写 `template_version`/`schema_version` 并跑常规 `check`。失败保持 `in_progress`，不宣称完成。
@@ -107,6 +117,22 @@ python3 <release-root>/scripts/ph_merge_update.py finalize [--apply] --repo <tar
 | `merge-update` | 本 Skill 已安装；`.agents/updates/<ver>/` 有 state/report |
 | `schema-contract` | 目标契约十 Skill / Schema 1.1.1；版本字段只在 finalize 后写 |
 | `project-content` | 混合文件已合并 PH 入口；项目事实仍在 |
+
+## 1.1.2 意图状态项
+
+读 `<release-root>/migrations/1.1.1-to-1.1.2.md`。`intent-no-completed` 将存量已完成条目保留结果记录后迁入对应实施分类；`intent-legacy-inprogress` 按真实启动情况处理旧进行中条目，不凭目录猜业务状态。信息不足则 blocked，不能跳过这两项而只勾前后版本表。
+
+## 1.1.3 文档补全项
+
+完整条文读 `<release-root>/migrations/1.1.2-to-1.1.3.md`，从更早版本出发仍须读完整链。
+
+| id | 做完的样子 |
+| --- | --- |
+| `init-docs-workflow` | 项目已装 ph-init 包携带新工作流、保留同名 docs 的内核与完整指导材料；check/sync 不生成文档 |
+| `docs-guidance` | 新增工程指导、各端／测试细节及索引按段落补缺；已拆专文的等价落点有证据，不复制规则 |
+| `docs-project-preserve` | 已审阅并记录项目正文、用例、核验历史与定制保留证据；未授权的全文补全只记录缺口，不执行 |
+
+项目资料仍有占位不阻止这次指导升级，但不能把“升级完成”说成“文档补全完成”。发生规则冲突则对应项 blocked，不 finalize。重复执行先读磁盘与进度，已有章节不重复追加。
 
 ## 完成标准
 

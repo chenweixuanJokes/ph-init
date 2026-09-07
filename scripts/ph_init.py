@@ -906,12 +906,82 @@ def manifest_bytes_for_mode(mode: str) -> bytes:
     return (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
+def is_docs_rel(rel: str) -> bool:
+    """True for repository-relative files under docs/, not docs-prefixed names."""
+
+    rel = posix_rel(rel)
+    return rel == "docs" or rel.startswith("docs/")
+
+
+def docs_dest_issue(repo: Path, dest: Path) -> tuple[str, str] | None:
+    """Reject links, escapes, junctions, hardlinks, and unsafe ancestors.
+
+    Same-name regular files under docs/ are preserved elsewhere; this helper
+    only names shapes init must not write through or treat as project docs.
+    """
+
+    try:
+        rel = repo_rel(repo, dest)
+    except ValueError:
+        return ("destination is outside the repository", PROBLEM_OUTSIDE_REPO)
+    if dest.is_symlink() or is_git_symlink_mode(repo, rel):
+        return ("destination is a symlink", PROBLEM_DEST_SYMLINK)
+    if is_disallowed_reparse(dest):
+        return ("destination is a junction/reparse point", PROBLEM_DEST_JUNCTION)
+    if dest.exists() and not dest.is_file():
+        return ("destination is not a regular file", PROBLEM_NOT_REGULAR_FILE)
+    try:
+        if dest.exists() and dest.is_file() and dest.stat().st_nlink > 1:
+            return ("hardlink is not allowed", PROBLEM_HARDLINK)
+    except OSError:
+        return ("destination is not a regular file", PROBLEM_NOT_REGULAR_FILE)
+    repo_a = repo.absolute()
+    cur = dest.absolute().parent
+    while True:
+        try:
+            cur_rel = posix_rel(cur.relative_to(repo_a))
+        except ValueError:
+            return ("destination ancestor is outside the repository", PROBLEM_OUTSIDE_REPO)
+        if cur == repo_a:
+            break
+        if cur.is_symlink() or is_disallowed_reparse(cur):
+            return (f"ancestor {cur_rel} is a symlink or junction", PROBLEM_NESTED_LINK)
+        if cur.exists() and not cur.is_dir():
+            return (f"ancestor {cur_rel} is not a directory", PROBLEM_NOT_DIRECTORY)
+        nxt = cur.parent
+        if nxt == cur:
+            return ("destination ancestor is outside the repository", PROBLEM_OUTSIDE_REPO)
+        cur = nxt
+    if not contained(repo, dest):
+        return ("destination resolves outside the repository", PROBLEM_OUTSIDE_REPO)
+    return None
+
+
+def classify_docs_scaffold(repo: Path, dest: Path, data: bytes) -> tuple[str, str, str | None]:
+    """Shared init plan/apply decision for one scaffold docs path."""
+
+    issue = docs_dest_issue(repo, dest)
+    if issue:
+        suffix, problem = issue
+        return ("conflict", f"scaffold: {suffix}", problem)
+    if dest.exists():
+        if dest.read_bytes() == data:
+            return ("skip", "scaffold: identical", None)
+        return ("skip", "scaffold: 保留待会话审阅", None)
+    return ("write", "scaffold", None)
+
+
 def plan_scaffold(report: Report, repo: Path, mode: str) -> None:
     for src, rel in scaffold_entries():
         if rel == ".gitignore":
             continue  # gitignore is marker-idempotent, not a whole-file replace
         data = manifest_bytes_for_mode(mode) if rel == ".agents/ph.json" else src.read_bytes()
-        plan_write_file(report, repo / rel, data, "scaffold", repo)
+        dest = repo / rel
+        if is_docs_rel(rel):
+            kind, reason, problem = classify_docs_scaffold(repo, dest, data)
+            report.add(kind, rel, reason, problem)
+            continue
+        plan_write_file(report, dest, data, "scaffold", repo)
 
 
 def apply_scaffold(repo: Path, mode: str) -> None:
@@ -920,6 +990,14 @@ def apply_scaffold(repo: Path, mode: str) -> None:
             continue
         dest = repo / rel
         data = manifest_bytes_for_mode(mode) if rel == ".agents/ph.json" else src.read_bytes()
+        if is_docs_rel(rel):
+            kind, reason, _problem = classify_docs_scaffold(repo, dest, data)
+            if kind == "skip":
+                continue
+            if kind != "write":
+                raise PHError(f"refusing to write docs path {rel}: {reason}")
+            apply_file(dest, data)
+            continue
         if dest.exists() and dest.read_bytes() == data:
             continue
         apply_file(dest, data)

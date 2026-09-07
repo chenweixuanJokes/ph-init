@@ -36,6 +36,18 @@
       "prompt": "把导出需求录成意图，不要升级框架。",
       "expected_output": "不触发 ph-merge-update；属于 ph-intent-new。",
       "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "从 PH 1.1.2 升到 1.1.3。Wiki 是之前 subagent 生成并由我们改过的，后端规范已拆文；只升级，不要重建文档。",
+      "expected_output": "prepare固定正式tag/commit，inspect后按三项init-docs-workflow/docs-guidance/docs-project-preserve建或恢复清单。只更新工作流、指导与缺失索引/章节，已拆规范采用等价落点，保留项目与subagent正文并记录证据。不全网调研/重选栈/重建Wiki，不init --apply。verify/finalize不代替语义审阅。本eval不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "继续 1.1.3 合并升级，新工程文已加过，原安全规范跟模板冲突，Wiki 还有占位。可以直接把版本标完成吗？",
+      "expected_output": "先对照磁盘和state，不重复插入工程文。安全规范冲突项blocked，不能finalize；Wiki占位本身不阻止指导升级，但不得宣称文档补全完成。冲突解决与全量补全分开授权，保留原文件。本eval不表示已实测。",
+      "files": []
     }
   ]
 }

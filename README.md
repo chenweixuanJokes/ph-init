@@ -4,11 +4,11 @@ PH（Project Harness）的正式分发入口。唯一源：
 
 `https://github.com/chenweixuanJokes/ph-init.git`
 
-本批发布为 **1.1.2**（Schema **1.1.1**，十个必需 Skill）。`latest` 取数值最大的稳定 tag，排除预发布与非版本标签，并固定到该 tag 的 commit。尚无稳定 tag 或查询失败时，初始化必须停止，不能把 `main`、工作区或眼前这份本地 `assets/scaffold` 当成最新正式版。
+本批版本为 **1.1.3**（Schema **1.1.1**，十个必需 Skill）。`latest` 取数值最大的稳定 tag，排除预发布与非版本标签，并固定到该 tag 的 commit。尚无稳定 tag 或查询失败时，初始化必须停止，不能把 `main`、工作区或眼前这份本地 `assets/scaffold` 当成最新正式版。
 
-本仓库是安装与升级材料，不是实施模板全集。`init` / `check` / `sync` 仍只做安装、检查与适配层同步。已接入项目升正式版用 `ph-merge-update`，不要 `init --apply` 覆盖定制，不要在目标仓库 `git pull`。
+本仓库是安装、升级与初始化文档材料。Python 的 `init` / `check` / `sync` 只做确定性的安装、检查与适配层同步；`ph-init` Skill 在安装后的同一会话中通过 subagent 补齐项目文档。已接入项目升正式版用 `ph-merge-update`，不要 `init --apply` 覆盖定制，不要在目标仓库 `git pull`。
 
-Schema 与发布版本独立维护。本批因九 Skill / `1.1.0` 锁变为十 Skill / `1.1.1` 而同时升 Schema；以后只改 Skill 或文档不必自动升 Schema。
+Schema 与发布版本独立维护。1.1.1 引入十 Skill 契约；本批保留该 Schema，不新增必需 Skill。
 
 ## 它安装什么
 
@@ -23,6 +23,17 @@ Schema 与发布版本独立维护。本批因九 Skill / `1.1.0` 锁变为十 S
 - portable（默认）或 symlink 适配层，规则与安全边界同发行根 `SKILL.md`
 
 意图目录现行为 `待办/` 与 `实施/`；不设 `已完成/`，交付的意图留在 `实施/` 并在记录注明结果。旧 `进行中/` 状态取消，存量条目按是否已启动迁入待办或实施。细则在项目文档，不在本 README 展开生命周期。
+
+## 存量项目文档补全
+
+初始化会话先盘点代码、实际依赖版本、CI、已有规范与测试，再按独立范围派发 subagent：补齐项目 Wiki，以及工程／前端／后端／测试规范。目标技术栈的官方资料在实际 init 时实时查阅，保留来源、版本与访问日期；本分发仓不预装特定业务栈规则。
+
+详见随包安装的[初始化与文档补全](./assets/scaffold/docs/约束规范/工程规范/初始化与文档补全.md)，其中包含项目级 harness 内容清单的逐项落点；新增[安全与配置](./assets/scaffold/docs/约束规范/工程规范/安全与配置.md)、[构建发布与运维](./assets/scaffold/docs/约束规范/工程规范/构建发布与运维.md)，并细化各端、用例和 Wiki 模板。
+
+- 已有安全普通 `docs/**` 文件由安装内核保留，缺失才安装；会话按段落补缺并维护索引，不整树覆盖。
+- 区分已接受规则、当前事实、待采纳建议和待核实项；不编造负责人、历史决策、意图、记忆或测试通过记录。
+- 安装 check 通过不等于文档补全完成。网络或子任务失败要单独记录，文档可按磁盘实态续做，不重跑 init。
+- 升级只引入本次迁移要求的指引，保护既有正文和 subagent 产物；完整文档重建不属于普通 merge-update。
 
 ## 根安装入口（clone 后准备正式版）
 
@@ -89,7 +100,7 @@ python3 <root>/scripts/ph_merge_update.py finalize --apply --repo /path/to/targe
 ## 命令
 
 ```bash
-python3 scripts/ph_release.py prepare --version latest|1.1.1 --repo <git-root>
+python3 scripts/ph_release.py prepare --version latest|1.1.3 --repo <git-root>
 python3 scripts/ph_init.py init  [--apply] [--mode portable|symlink] [--repo <git-root>]
 python3 scripts/ph_init.py check [--mode portable|symlink] [--repo <git-root>]
 python3 scripts/ph_init.py sync  [--apply] [--mode portable|symlink] [--repo <git-root>]
@@ -103,7 +114,7 @@ python3 scripts/ph_merge_update.py finalize [--apply] --repo <git-root>
 ## 安全
 
 - 不加 `--apply` 不写目标
-- fail-closed；已有不同内容不覆盖
+- 非 docs 冲突 fail-closed；已有安全普通 docs 保留待会话审阅，不安全路径仍阻断
 - 拒绝嵌套 symlink / junction、仓外路径、hardlink 充当软链、受跟踪的 `.worktrees/`
 - 不 push、不删分支、不改 `core.symlinks`、不对目标 `git pull`
 

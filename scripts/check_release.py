@@ -689,8 +689,9 @@ def read_published_release(repo: Path, tag: str) -> dict:
 
 
 def assert_index_has_hop(hops: list[dict], src: str, dest: str) -> None:
-    for hop in hops:
-        if hop["from_version"] == src and hop["to_version"] == dest:
+    chain = chain_to(hops, dest)
+    for hop in chain:
+        if hop["from_version"] == src:
             return
     raise CheckError(f"missing migration record {src} -> {dest}")
 

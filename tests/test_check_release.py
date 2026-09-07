@@ -40,6 +40,23 @@ REQUIRED_SKILLS = [
 ]
 
 
+def _read_release_versions() -> tuple[str, str]:
+    data = json.loads((REPO_ROOT / "release.json").read_text(encoding="utf-8"))
+    return str(data["version"]), str(data["schema_version"])
+
+
+def _bump_patch(version: str, delta: int) -> str:
+    major, minor, patch = (int(part) for part in version.split("."))
+    next_patch = patch + delta
+    if next_patch < 0:
+        raise ValueError(f"cannot bump {version} by {delta}")
+    return f"{major}.{minor}.{next_patch}"
+
+
+CURRENT, CURRENT_SCHEMA = _read_release_versions()
+NEXT = _bump_patch(CURRENT, 1)
+
+
 def run(argv, cwd=None):
     return subprocess.run(argv, cwd=cwd, text=True, capture_output=True, timeout=60)
 
@@ -74,7 +91,7 @@ class CheckReleaseTests(unittest.TestCase):
     def test_prepared_tree_errors_are_not_swallowed(self):
         with mock.patch.object(check_release.ph_release, "validate_prepared_tree", side_effect=check_release.ph_release.PHReleaseError("illegal manifest: skills.required_names mismatch")):
             with self.assertRaisesRegex(check_release.CheckError, "skills.required_names mismatch"):
-                check_release._call_prepared_tree(REPO_ROOT, "1.1.2", REQUIRED_SKILLS)
+                check_release._call_prepared_tree(REPO_ROOT, CURRENT, REQUIRED_SKILLS)
 
     def temp_dir(self, prefix):
         root = Path(tempfile.mkdtemp(prefix=prefix))
@@ -137,8 +154,8 @@ class CheckReleaseTests(unittest.TestCase):
     def test_current_tree_passes_without_tags(self):
         result = check_release.validate_tree(REPO_ROOT, repo=REPO_ROOT, tag=None)
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["version"], "1.1.2")
-        self.assertEqual(result["schema_version"], "1.1.1")
+        self.assertEqual(result["version"], CURRENT)
+        self.assertEqual(result["schema_version"], CURRENT_SCHEMA)
         self.assertEqual(result["required_skills"], REQUIRED_SKILLS)
 
     def test_cli_current_tree(self):
@@ -149,7 +166,7 @@ class CheckReleaseTests(unittest.TestCase):
         self.assertEqual(code, 0, err.getvalue())
         data = json.loads(buf.getvalue())
         self.assertEqual(data["status"], "ok")
-        self.assertEqual(data["version"], "1.1.2")
+        self.assertEqual(data["version"], CURRENT)
 
     def test_root_skill_codeblock_placeholder_is_not_a_broken_link(self):
         repo = self.git_repo("ph-check-fence-")
@@ -202,8 +219,8 @@ class CheckReleaseTests(unittest.TestCase):
 
     def test_temp_git_same_version_non_payload_change_passes(self):
         repo = self.git_repo("ph-check-nonpayload-")
-        self.commit_all(repo, "v1.1.2")
-        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
+        self.commit_all(repo, f"v{CURRENT}")
+        proc = run(["git", "tag", "-a", f"v{CURRENT}", "-m", f"v{CURRENT}"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
         (repo / "README.md").write_text("# docs only\n", encoding="utf-8")
         (repo / ".github").mkdir(exist_ok=True)
@@ -218,8 +235,8 @@ class CheckReleaseTests(unittest.TestCase):
 
     def test_temp_git_same_version_payload_change_rejected(self):
         repo = self.git_repo("ph-check-payload-")
-        self.commit_all(repo, "v1.1.2")
-        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
+        self.commit_all(repo, f"v{CURRENT}")
+        proc = run(["git", "tag", "-a", f"v{CURRENT}", "-m", f"v{CURRENT}"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
         skill = repo / "assets/scaffold/.agents/skills/ph-merge-update/SKILL.md"
         skill.write_text(skill.read_text(encoding="utf-8") + "\nextra payload line\n", encoding="utf-8")
@@ -227,75 +244,101 @@ class CheckReleaseTests(unittest.TestCase):
 
     def test_new_patch_without_migration_record_rejected(self):
         repo = self.git_repo("ph-check-missing-hop-")
-        self.commit_all(repo, "v1.1.2")
-        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
+        self.commit_all(repo, f"v{CURRENT}")
+        proc = run(["git", "tag", "-a", f"v{CURRENT}", "-m", f"v{CURRENT}"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
-        self.mutate_release(repo, version="1.1.3")
-        self.mutate_manifest(repo, template_version="1.1.3")
-        self.assert_fails(repo, "missing migration record 1.1.2 -> 1.1.3")
+        self.mutate_release(repo, version=NEXT)
+        self.mutate_manifest(repo, template_version=NEXT)
+        self.assert_fails(repo, f"missing migration record {CURRENT} -> {NEXT}")
 
     def test_new_patch_with_complete_record_passes(self):
         repo = self.git_repo("ph-check-next-")
-        self.commit_all(repo, "v1.1.2")
-        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
+        self.commit_all(repo, f"v{CURRENT}")
+        proc = run(["git", "tag", "-a", f"v{CURRENT}", "-m", f"v{CURRENT}"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
-        self.mutate_release(repo, version="1.1.3")
-        self.mutate_manifest(repo, template_version="1.1.3")
+        self.mutate_release(repo, version=NEXT)
+        self.mutate_manifest(repo, template_version=NEXT)
         hops = json.loads((repo / "migrations/index.json").read_text(encoding="utf-8"))["migrations"]
         hops.append(
             {
-                "from_version": "1.1.2",
-                "to_version": "1.1.3",
-                "path": "migrations/1.1.2-to-1.1.3.md",
+                "from_version": CURRENT,
+                "to_version": NEXT,
+                "path": f"migrations/{CURRENT}-to-{NEXT}.md",
                 "items": ["docs-only"],
             }
         )
         self.set_index(repo, hops)
-        (repo / "migrations/1.1.2-to-1.1.3.md").write_text(
-            "# 1.1.2 → 1.1.3\n\n"
-            "## why\npatch\n\n## from\n1.1.2\n\n## to\n1.1.3\n\n"
+        (repo / f"migrations/{CURRENT}-to-{NEXT}.md").write_text(
+            f"# {CURRENT} → {NEXT}\n\n"
+            f"## why\npatch\n\n## from\n{CURRENT}\n\n## to\n{NEXT}\n\n"
             "## affected\ndocs-only\n\n## preserve\nnone\n\n"
             "## conflict\nnone\n\n## verify\nok\n",
             encoding="utf-8",
         )
         result = check_release.validate_tree(repo, repo=repo, tag=None)
-        self.assertEqual(result["version"], "1.1.3")
+        self.assertEqual(result["version"], NEXT)
 
     def test_tag_validation_requires_matching_commit_and_meta(self):
         repo = self.git_repo("ph-check-tag-")
-        commit = self.commit_all(repo, "v1.1.2")
-        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
+        commit = self.commit_all(repo, f"v{CURRENT}")
+        proc = run(["git", "tag", "-a", f"v{CURRENT}", "-m", f"v{CURRENT}"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
-        result = check_release.validate_tree(repo, repo=repo, tag="v1.1.2")
+        result = check_release.validate_tree(repo, repo=repo, tag=f"v{CURRENT}")
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(run(["git", "rev-parse", "v1.1.2^{}"], cwd=repo).stdout.strip(), commit)
+        self.assertEqual(run(["git", "rev-parse", f"v{CURRENT}^{{}}"], cwd=repo).stdout.strip(), commit)
 
-        self.mutate_release(repo, version="1.1.3")
-        self.mutate_manifest(repo, template_version="1.1.3")
+        self.mutate_release(repo, version=NEXT)
+        self.mutate_manifest(repo, template_version=NEXT)
         hops = json.loads((repo / "migrations/index.json").read_text(encoding="utf-8"))["migrations"]
         hops.append(
             {
-                "from_version": "1.1.2",
-                "to_version": "1.1.3",
-                "path": "migrations/1.1.2-to-1.1.3.md",
+                "from_version": CURRENT,
+                "to_version": NEXT,
+                "path": f"migrations/{CURRENT}-to-{NEXT}.md",
                 "items": ["docs-only"],
             }
         )
         self.set_index(repo, hops)
-        (repo / "migrations/1.1.2-to-1.1.3.md").write_text(
-            "# 1.1.2 → 1.1.3\n\n## why\n\n## from\n\n## to\n\n## affected\ndocs-only\n\n## preserve\n\n## conflict\n\n## verify\n",
+        (repo / f"migrations/{CURRENT}-to-{NEXT}.md").write_text(
+            f"# {CURRENT} → {NEXT}\n\n## why\n\n## from\n\n## to\n\n## affected\ndocs-only\n\n## preserve\n\n## conflict\n\n## verify\n",
             encoding="utf-8",
         )
-        self.assert_fails(repo, "does not match release.json version", tag="v1.1.2")
+        self.assert_fails(repo, "does not match release.json version", tag=f"v{CURRENT}")
 
         repo = self.git_repo("ph-check-tag-head-")
-        self.commit_all(repo, "v1.1.2")
-        proc = run(["git", "tag", "-a", "v1.1.2", "-m", "v1.1.2"], cwd=repo)
+        self.commit_all(repo, f"v{CURRENT}")
+        proc = run(["git", "tag", "-a", f"v{CURRENT}", "-m", f"v{CURRENT}"], cwd=repo)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
         (repo / "README.md").write_text("# later\n", encoding="utf-8")
         later = self.commit_all(repo, "later")
-        self.assertNotEqual(later, run(["git", "rev-parse", "v1.1.2^{}"], cwd=repo).stdout.strip())
-        self.assert_fails(repo, "does not match HEAD", tag="v1.1.2")
+        self.assertNotEqual(later, run(["git", "rev-parse", f"v{CURRENT}^{{}}"], cwd=repo).stdout.strip())
+        self.assert_fails(repo, "does not match HEAD", tag=f"v{CURRENT}")
+
+    def test_complete_chain_across_untagged_intermediate_passes(self):
+        published = _bump_patch(CURRENT, -2)
+        repo = self.git_repo("ph-check-chain-ok-")
+        self.commit_all(repo, f"v{published}")
+        proc = run(["git", "tag", "-a", f"v{published}", "-m", f"v{published}"], cwd=repo)
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+        result = check_release.validate_tree(repo, repo=repo, tag=None)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["version"], CURRENT)
+
+    def test_broken_chain_across_untagged_intermediate_rejected(self):
+        published = _bump_patch(CURRENT, -2)
+        intermediate = _bump_patch(CURRENT, -1)
+        repo = self.git_repo("ph-check-chain-gap-")
+        hops = json.loads((repo / "migrations/index.json").read_text(encoding="utf-8"))["migrations"]
+        hops = [
+            hop
+            for hop in hops
+            if not (hop["from_version"] == published and hop["to_version"] == intermediate)
+        ]
+        self.set_index(repo, hops)
+        self.commit_all(repo, f"v{published}")
+        proc = run(["git", "tag", "-a", f"v{published}", "-m", f"v{published}"], cwd=repo)
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+        self.assert_fails(repo, f"missing migration record {published} -> {CURRENT}")
 
     def test_mocked_git_tags_reject_payload_rewrite_of_published_version(self):
         repo = self.temp_dir("ph-check-mock-")
