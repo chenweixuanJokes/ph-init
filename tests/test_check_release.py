@@ -50,13 +50,9 @@ def copy_repo(src: Path, dest: Path) -> None:
         src,
         dest,
         symlinks=False,
-        ignore=shutil.ignore_patterns(
-            ".git",
-            "__pycache__",
-            ".zcode",
-            ".DS_Store",
-            "*.pyc",
-        ),
+        ignore=lambda directory, names: set(shutil.ignore_patterns(
+            ".git", "__pycache__", ".zcode", ".DS_Store", "*.pyc"
+        )(directory, names)) | ({"AGENTS.md", "CLAUDE.md"} if Path(directory) == src else set()),
     )
 
 
@@ -213,6 +209,10 @@ class CheckReleaseTests(unittest.TestCase):
         (repo / ".github").mkdir(exist_ok=True)
         (repo / ".github/workflows").mkdir(exist_ok=True)
         (repo / ".github/workflows/check.yml").write_text("name: check\n", encoding="utf-8")
+        (repo / ".agents").mkdir(exist_ok=True)
+        (repo / ".agents/AGENTS.md").write_text("# Maintainer rules\n", encoding="utf-8")
+        (repo / "docs").mkdir(exist_ok=True)
+        (repo / "docs/release-rules.md").write_text("# Version discipline\n", encoding="utf-8")
         result = check_release.validate_tree(repo, repo=repo, tag=None)
         self.assertEqual(result["status"], "ok")
 

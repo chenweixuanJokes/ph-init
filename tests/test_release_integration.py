@@ -49,8 +49,9 @@ class ReleaseIntegrationTests(unittest.TestCase):
         workspace = Path(tempfile.mkdtemp(prefix="ph-release-integration-"))
         try:
             source = workspace / "source"
-            shutil.copytree(ROOT, source, ignore=shutil.ignore_patterns(
-                ".git", ".zcode", "__pycache__", "*.pyc", ".DS_Store"))
+            shutil.copytree(ROOT, source, ignore=lambda directory, names: set(shutil.ignore_patterns(
+                ".git", ".zcode", "__pycache__", "*.pyc", ".DS_Store"
+            )(directory, names)) | ({"AGENTS.md", "CLAUDE.md"} if Path(directory) == ROOT else set()))
             command("git", "init", "-q", str(source))
             command("git", "-C", str(source), "add", ".")
             command("git", "-C", str(source), "-c", "user.name=PH fixture",

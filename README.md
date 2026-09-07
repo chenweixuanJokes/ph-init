@@ -111,6 +111,8 @@ python3 scripts/ph_merge_update.py finalize [--apply] --repo <git-root>
 
 面向用户的版本摘要：[CHANGELOG.md](./CHANGELOG.md)。发布元数据：`release.json`。
 
+修改发行内容或准备发布前，必须遵循本仓 [版本与合并升级约束](./docs/约束规范/工程规范/版本与合并升级.md)：每个对外小改动批次递增 `1.1.x`，同时提交相邻版本的合并升级方案；缺任一项不得发布。此规则由 `.agents/AGENTS.md` 引用，区别于下游 scaffold 约束。
+
 本独立仓库用 Git 标签发布。作者侧旧 monorepo 的 `scripts/build_scaffold.py` 与 `scripts/build_project_template.py` **不是**安装或发布源；不要在本仓为了“出包”去跑它们，也不要把仓外实施模板布局当成前置条件。
 
 发布检查与回归（在本仓库根）：

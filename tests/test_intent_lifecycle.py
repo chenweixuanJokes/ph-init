@@ -38,8 +38,8 @@ def run(argv, cwd=None):
     return subprocess.run(argv, cwd=cwd, text=True, capture_output=True, timeout=60)
 
 
-def ph(repo, *args, script=PH_INIT):
-    return run([sys.executable, str(script), *args, "--repo", str(repo)])
+def ph(repo, *args, script=None):
+    return run([sys.executable, str(script or PH_INIT), *args, "--repo", str(repo)])
 
 
 def fields(stdout):
@@ -82,6 +82,23 @@ def line_field(text, key):
 
 
 class IntentLifecycleTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        global PH_INIT
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        import ph_init
+        cls._source = Path(tempfile.mkdtemp(prefix="ph-intent-payload-"))
+        for src in ph_init.ph_init_payload_files():
+            dest = cls._source / src.relative_to(REPO_ROOT)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(src.read_bytes())
+        PH_INIT = cls._source / "scripts/ph_init.py"
+
+    @classmethod
+    def tearDownClass(cls):
+        TRASH_ROOT.mkdir(parents=True, exist_ok=True)
+        cls._source.rename(TRASH_ROOT / cls._source.name)
+
     def setUp(self):
         self._temps = []
 
@@ -113,7 +130,7 @@ class IntentLifecycleTests(unittest.TestCase):
             self.assertEqual(got.get(key), value, proc.stdout)
         self.assertNotRegex(proc.stdout, r"(?m)^item=(conflict|block|error)\t", proc.stdout)
 
-    def init_apply(self, prefix, mode="portable", script=PH_INIT):
+    def init_apply(self, prefix, mode="portable", script=None):
         repo = self.git_repo(prefix)
         self.assert_ok(ph(repo, "init", "--apply", "--mode", mode, script=script),
                        action="init", mode=mode, apply="true")

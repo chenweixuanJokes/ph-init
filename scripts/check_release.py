@@ -48,6 +48,9 @@ NON_PAYLOAD_TOP = frozenset(
         "tests",
         ".gitignore",
         ".zcode",
+        "docs",
+        "AGENTS.md",
+        "CLAUDE.md",
     }
 )
 REQUIRED_ROOT_FILES = (
@@ -154,6 +157,12 @@ def iter_files(root: Path) -> Iterable[Path]:
                 continue
             path = Path(dirpath) / name
             if path.is_symlink():
+                if path.parent == root and path.name in {"AGENTS.md", "CLAUDE.md"}:
+                    if os.readlink(path) != ".agents/AGENTS.md" or not is_regular_file(root / ".agents/AGENTS.md"):
+                        raise CheckError(f"invalid local constraint entry: {path}")
+                    if git_file_bytes(root, "HEAD", path.name) is not None:
+                        raise CheckError(f"maintainer symlink must not be published: {path}")
+                    continue
                 raise CheckError(f"refusing symlink in tree: {path}")
             if path.is_file():
                 yield path
@@ -616,6 +625,8 @@ def git_ls_files(repo: Path, spec: str) -> list[str]:
 
 
 def is_payload_path(rel: str) -> bool:
+    if rel == ".agents/AGENTS.md":
+        return False
     top = rel.split("/", 1)[0]
     if top in NON_PAYLOAD_TOP:
         return False
