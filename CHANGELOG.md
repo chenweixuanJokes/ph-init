@@ -2,9 +2,17 @@
 
 本仓库用户可见的正式版本摘要。相邻版本的适配步骤见 [migrations/README.md](./migrations/README.md)。
 
-Schema 与发布版本独立。本批因版本锁与必需 Skill 清单变化，Schema 同为 `1.1.1`。以后只改 Skill 正文或文档时，不必自动升 Schema。
+Schema 与发布版本独立。`1.1.1` 批因版本锁与必需 Skill 清单变化，Schema 同为 `1.1.1`。以后只改 Skill 正文或文档时，不必自动升 Schema。
 
-尚未打过历史 tag。`1.0.0` 与两套 `1.1.0` 命名是可追溯提交，不是已发布 tag。首个正式 tag 预定 `v1.1.1`，不追认 `v1.1.0`。
+尚未打过历史 tag。`1.0.0` 与两套 `1.1.0` 命名是可追溯提交，不是已发布 tag。首个正式 tag 是 `v1.1.1`，不追认 `v1.1.0`。
+
+## 1.1.4
+
+- 存量接入改为“已有内容优先”：会话盘点七类证据（模块、代码、配置、真实依赖、测试、CI、旧约束）后在目标仓外生成 `sources` 哈希快照与合并候选 plan，`init --adopt-plan` 核对哈希一致才落盘；候选只允许 canonical `.agents/AGENTS.md`（必需）与 `docs/**`，已有正文优先复用 / 引用登记，不复制第二套。
+- adopt 仅用于尚无 `.agents/ph.json` 的目标；已安装仓库拒绝 adopt 并指向 `ph-merge-update`。已安装同版重跑 init 保留定制 canonical，不再冲突；未安装仓库 canonical 不一致仍阻断并提示 adopt 流程。`--mode` 缺省先读 manifest 声明再从适配层推断。
+- 指引与导航：dry-run 输出按四类整合（直接落地 / 复用引用 / 冲突待裁决 / 不适用与保留）；旧文档目录（如 `docs/specs/`、`docs/domains/`、`docs/plans/`）按内容归并进三域，不留旧目录、空壳或软链，PH 固定入口摘要 + 深链指向归并后的正文，被引用旧规范保持效力。写入或移走旧文件前，原文先原样备份到 `.agents/archived/<日期>-pre-init/`，仓内快照即是可恢复原件，不再要求仓外原文备份；adopt 的 plan JSON 仍在目标仓外。
+- 新增 `.agents/init-report.md` 覆盖报告：矩阵每个独立 id 一行（落点、仓内证据、结果、说明），结果枚举已核验 / 复用 / 不适用 / 待核实 / 冲突；PH 通用流程条目写采用声明。
+- Schema 保持 `1.1.1`、十个必需 Skill；本批仅 Skill、内核与文档行为变化，无契约改动。迁移项：`adopt-plan-init` `adopt-existing-content` `init-report-coverage`。
 
 ## 1.1.3
 

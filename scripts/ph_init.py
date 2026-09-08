@@ -64,6 +64,15 @@ PROBLEM_SYMLINK_TARGET = "symlink_target_mismatch"
 PROBLEM_EXISTING_NON_SYMLINK = "existing_non_symlink"
 SYNC_REPAIRABLE_PROBLEMS = frozenset({PROBLEM_CONTENT_DRIFT})
 FALSE_CORE_SYMLINKS = frozenset({"false", "0", "no", "off"})
+# Adopt-plan contract: a session reads the legacy rules of an uninstalled repo,
+# merges them with the PH template, and the user reviews the exact write set.
+# The plan is the authorization; the script only verifies and materializes it.
+ADOPT_PLAN_VERSION = 1
+ADOPT_CANONICAL = ".agents/AGENTS.md"
+ADOPT_ROOT_ENTRIES = ("AGENTS.md", "CLAUDE.md")
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+ADOPT_UNSAFE_HEAD = re.compile(r"^(?:/|~|[A-Za-z]:[\\/]|[A-Za-z][A-Za-z0-9+.-]*:)")
+ADOPT_NTFS_RESERVED = frozenset('<>:"|?*')
 
 
 class PHError(Exception):
@@ -651,6 +660,58 @@ def plan_skip_or_write_copy(
     plan_write_file(report, dest, src.read_bytes(), reason, repo, repairable=repairable)
 
 
+def plan_authorized_write(report: Report, dest: Path, data: bytes, reason: str, repo: Path) -> None:
+    """Plan a root-entry rewrite authorized by a hash-pinned adopt source.
+
+    Only the two root rule entries may reach this helper: their current bytes
+    were pinned in the adopt plan's sources, so replacing them with the merged
+    candidate (portable copy / CLAUDE stub) is the reviewed transformation.
+    Unsafe shapes still conflict; nothing is forced.
+    """
+
+    try:
+        rel = repo_rel(repo, dest)
+    except ValueError:
+        report.add(
+            "conflict",
+            dest,
+            f"{reason}: destination is outside the repository",
+            PROBLEM_OUTSIDE_REPO,
+        )
+        return
+    if not contained(repo, dest):
+        report.add(
+            "conflict",
+            rel,
+            f"{reason}: destination resolves outside the repository",
+            PROBLEM_OUTSIDE_REPO,
+        )
+        return
+    if dest.is_symlink():
+        report.add("conflict", rel, f"{reason}: destination is a symlink", PROBLEM_DEST_SYMLINK)
+        return
+    if is_disallowed_reparse(dest):
+        report.add("conflict", rel, f"{reason}: destination is a junction/reparse point", PROBLEM_DEST_JUNCTION)
+        return
+    if dest.exists() and not dest.is_file():
+        report.add("conflict", rel, f"{reason}: destination is not a regular file", PROBLEM_NOT_REGULAR_FILE)
+        return
+    try:
+        shared = dest.exists() and dest.stat().st_nlink > 1
+    except OSError:
+        shared = True
+    if shared:
+        report.add("conflict", rel, f"{reason}: hardlink is not allowed", PROBLEM_HARDLINK)
+        return
+    if not dest.exists():
+        report.add("write", rel, reason)
+        return
+    if dest.read_bytes() == data:
+        report.add("skip", rel, f"{reason}: identical")
+        return
+    report.add("write", rel, f"{reason}: 来源已确认，覆盖为合并结果")
+
+
 def apply_file(dest: Path, data: bytes) -> None:
     if dest.is_symlink() or is_disallowed_reparse(dest):
         raise PHError(f"refusing to write through symlink or junction: {dest}")
@@ -971,12 +1032,239 @@ def classify_docs_scaffold(repo: Path, dest: Path, data: bytes) -> tuple[str, st
     return ("write", "scaffold", None)
 
 
-def plan_scaffold(report: Report, repo: Path, mode: str) -> None:
+def safe_adopt_rel(value: object, ctx: str) -> str:
+    """Repository-relative POSIX path check that allows scaffold-style unicode.
+
+    The manifest REL_PATH intentionally stays ASCII-only for adapter consts;
+    adopt plans legitimately carry Chinese docs paths, so only unsafe shapes
+    are rejected here: absolute/drive/scheme heads, backslashes, NUL bytes,
+    empty, dot, or parent components, and Windows-reserved characters
+    (`<>:"|?*` per component; on NTFS `docs/a:b.md` is an alternate data
+    stream, not a file).
+    """
+
+    if (
+        not isinstance(value, str)
+        or not value
+        or value.startswith(("/", "~"))
+        or "\\" in value
+        or "\x00" in value
+        or ADOPT_UNSAFE_HEAD.match(value)
+    ):
+        raise PHError(f"{ctx} is not a repository-relative POSIX path: {value!r}")
+    for part in value.split("/"):
+        if part in ("", ".", ".."):
+            raise PHError(f"{ctx} is not a repository-relative POSIX path: {value!r}")
+        if ADOPT_NTFS_RESERVED.intersection(part):
+            raise PHError(f"{ctx} has a Windows-reserved character in path component {part!r}: {value!r}")
+    return value
+
+
+def adopt_plan_allows_file(rel: str) -> bool:
+    """Adopt may write only the merged canonical and explicitly listed docs."""
+
+    return rel == ADOPT_CANONICAL or rel.startswith("docs/")
+
+
+def load_adopt_plan(value: str, repo: Path) -> dict:
+    """Read and structurally validate an adopt plan. Disk pins are checked later.
+
+    The plan file must be a regular unshared file outside both the target
+    repository and the ph-init distribution root, so an adopted write set can
+    never be smuggled through repo content or the release tree.
+    """
+
+    path = Path(value)
+    if not path.exists():
+        raise PHError(f"missing adopt plan: {path}")
+    if path.is_symlink() or is_disallowed_reparse(path) or not path.is_file():
+        raise PHError(f"adopt plan must be a regular file, not a link or junction: {path}")
+    if path.stat().st_nlink > 1:
+        raise PHError(f"adopt plan must not be a hardlink: {path}")
+    if contained(repo, path):
+        raise PHError(f"adopt plan must live outside the target repository: {path}")
+    if contained(skill_root(), path):
+        raise PHError(f"adopt plan must not live inside the ph-init distribution root: {path}")
+    data = read_json(path)
+    _const(_need(data, "version", "adopt plan"), ADOPT_PLAN_VERSION, "adopt plan.version")
+    declared = _need(data, "repo", "adopt plan")
+    if (
+        not isinstance(declared, str)
+        or not Path(declared).is_absolute()
+        or Path(declared).resolve() != repo
+    ):
+        raise PHError(f"adopt plan.repo must be the absolute target repository path, got {declared!r}")
+    _const(_need(data, "release_version", "adopt plan"), RELEASE_VERSION, "adopt plan.release_version")
+    sources = _need(data, "sources", "adopt plan")
+    files = _need(data, "files", "adopt plan")
+    if not isinstance(sources, dict) or not isinstance(files, dict):
+        raise PHError("adopt plan sources and files must be objects")
+    for rel, expected in sources.items():
+        safe_adopt_rel(rel, "adopt plan source path")
+        if expected is not None and (not isinstance(expected, str) or not SHA256_HEX.fullmatch(expected)):
+            raise PHError(f"adopt plan source {rel} must be a lowercase SHA256 digest or null")
+    for rel in (ADOPT_CANONICAL, *ADOPT_ROOT_ENTRIES):
+        if rel not in sources:
+            raise PHError(f"adopt plan sources must record rule entry {rel}")
+    for rel, body in files.items():
+        safe_adopt_rel(rel, "adopt plan file path")
+        if not adopt_plan_allows_file(rel):
+            raise PHError(
+                f"adopt plan file is outside the allowed write set ({ADOPT_CANONICAL} and docs/**): {rel}"
+            )
+        if not isinstance(body, str):
+            raise PHError(f"adopt plan file {rel} must be a UTF-8 text body")
+        try:
+            body.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise PHError(f"adopt plan file {rel} is not encodable as UTF-8: {exc}") from exc
+        if rel not in sources:
+            raise PHError(f"adopt plan file {rel} is not pinned in sources")
+    canonical = files.get(ADOPT_CANONICAL)
+    if not isinstance(canonical, str) or not canonical.strip():
+        raise PHError(f"adopt plan files must carry a non-empty {ADOPT_CANONICAL}")
+    return data
+
+
+def check_adopt_sources(report: Report, repo: Path, plan: dict) -> bool:
+    """Verify every pinned source against disk; report conflicts on drift.
+
+    Called once after the plan is read (whole-set check) and again before any
+    write, so any change between plan review and materialization blocks. Root
+    entries may be direct relative symlinks to the canonical body only; every
+    other source must be a safe regular file or absent.
+    """
+
+    ok = True
+    for rel in sorted(plan["sources"]):
+        expected = plan["sources"][rel]
+        path = repo / rel
+        digest: str | None = None
+        if rel in ADOPT_ROOT_ENTRIES and path.is_symlink():
+            raw = posix_rel(os.readlink(path))
+            if raw != ADOPT_CANONICAL:
+                report.add(
+                    "conflict",
+                    rel,
+                    f"adopt source: root entry symlink must be exactly {ADOPT_CANONICAL}, got {raw!r}",
+                    PROBLEM_SYMLINK_TARGET,
+                )
+                ok = False
+                continue
+            body = repo / ADOPT_CANONICAL
+            if not body.is_file():
+                report.add(
+                    "conflict",
+                    rel,
+                    f"adopt source: symlink target {ADOPT_CANONICAL} is missing",
+                    PROBLEM_SYMLINK_TARGET,
+                )
+                ok = False
+                continue
+            digest = sha256_file(body)
+        else:
+            issue = docs_dest_issue(repo, path)
+            if issue is not None:
+                suffix, problem = issue
+                report.add("conflict", rel, f"adopt source: {suffix}", problem)
+                ok = False
+                continue
+            if path.exists():
+                digest = sha256_file(path)
+        if digest != expected:
+            want = "absent" if expected is None else expected
+            got = "absent" if digest is None else digest
+            report.add("conflict", rel, f"adopt source drift: plan pinned {want}, disk has {got}")
+            ok = False
+    return ok
+
+
+def classify_adopt_file(repo: Path, rel: str, data: bytes) -> tuple[str, str, str | None]:
+    """Shared adopt plan/apply decision for one plan-listed write."""
+
+    issue = docs_dest_issue(repo, repo / rel)
+    if issue is not None:
+        suffix, problem = issue
+        return ("conflict", f"adopt: {suffix}", problem)
+    dest = repo / rel
+    if dest.exists():
+        if dest.read_bytes() == data:
+            return ("skip", "adopt: identical", None)
+        return ("write", "adopt: 合并写入（覆盖已确认来源）", None)
+    return ("write", "adopt: 合并写入（新文件）", None)
+
+
+def plan_adopt_files(report: Report, repo: Path, plan: dict) -> None:
+    for rel in sorted(plan["files"]):
+        data = plan["files"][rel].encode("utf-8")
+        kind, reason, problem = classify_adopt_file(repo, rel, data)
+        report.add(kind, rel, reason, problem)
+
+
+def apply_adopt_files(repo: Path, plan: dict) -> None:
+    for rel in sorted(plan["files"]):
+        data = plan["files"][rel].encode("utf-8")
+        kind, reason, _problem = classify_adopt_file(repo, rel, data)
+        if kind == "skip":
+            continue
+        if kind != "write":
+            raise PHError(f"refusing to write adopt file {rel}: {reason}")
+        apply_file(repo / rel, data)
+
+
+def installed_same_version(repo: Path) -> bool:
+    """True when a valid manifest declares this exact release version."""
+
+    manifest = repo / ".agents" / "ph.json"
+    if manifest.is_symlink() or is_disallowed_reparse(manifest) or not manifest.is_file():
+        return False
+    try:
+        data = read_json(manifest)
+    except PHError:
+        return False
+    return data.get("template_version") == RELEASE_VERSION
+
+
+def classify_canonical_scaffold(repo: Path, dest: Path, data: bytes) -> tuple[str, str, str | None]:
+    """Shared init decision for the scaffold canonical rule body.
+
+    After a same-version install the canonical is user-owned prose: repeated
+    init skips a customized body instead of conflicting, so customization
+    survives idempotent re-runs. An uninstalled repo with a differing body
+    still conflicts, with a pointer to the adopt flow.
+    """
+
+    if dest.is_symlink():
+        return ("conflict", "scaffold: destination is a symlink", PROBLEM_DEST_SYMLINK)
+    if is_disallowed_reparse(dest):
+        return ("conflict", "scaffold: destination is a junction/reparse point", PROBLEM_DEST_JUNCTION)
+    if dest.exists() and not dest.is_file():
+        return ("conflict", "scaffold: destination is not a regular file", PROBLEM_NOT_REGULAR_FILE)
+    if not dest.exists():
+        return ("write", "scaffold", None)
+    current = dest.read_bytes()
+    if current == data:
+        return ("skip", "scaffold: identical", None)
+    if installed_same_version(repo):
+        return ("skip", "scaffold: 已安装同版，保留定制 canonical", None)
+    reason = "scaffold: existing file differs"
+    if not (repo / ".agents" / "ph.json").exists():
+        reason += "；未安装 PH：请由会话生成 adopt 计划（init --adopt-plan）整合既有规则"
+    return ("conflict", reason, PROBLEM_EXISTING_DIFF)
+
+
+def plan_scaffold(report: Report, repo: Path, mode: str, *, skip_rels: frozenset[str] = frozenset()) -> None:
     for src, rel in scaffold_entries():
         if rel == ".gitignore":
             continue  # gitignore is marker-idempotent, not a whole-file replace
+        if rel in skip_rels:
+            continue  # the adopt plan supplies the reviewed content for this path
         data = manifest_bytes_for_mode(mode) if rel == ".agents/ph.json" else src.read_bytes()
         dest = repo / rel
+        if rel == ADOPT_CANONICAL:
+            kind, reason, problem = classify_canonical_scaffold(repo, dest, data)
+            report.add(kind, rel, reason, problem)
+            continue
         if is_docs_rel(rel):
             kind, reason, problem = classify_docs_scaffold(repo, dest, data)
             report.add(kind, rel, reason, problem)
@@ -984,12 +1272,22 @@ def plan_scaffold(report: Report, repo: Path, mode: str) -> None:
         plan_write_file(report, dest, data, "scaffold", repo)
 
 
-def apply_scaffold(repo: Path, mode: str) -> None:
+def apply_scaffold(repo: Path, mode: str, *, skip_rels: frozenset[str] = frozenset()) -> None:
     for src, rel in scaffold_entries():
         if rel == ".gitignore":
             continue
+        if rel in skip_rels:
+            continue
         dest = repo / rel
         data = manifest_bytes_for_mode(mode) if rel == ".agents/ph.json" else src.read_bytes()
+        if rel == ADOPT_CANONICAL:
+            kind, reason, _problem = classify_canonical_scaffold(repo, dest, data)
+            if kind == "skip":
+                continue
+            if kind != "write":
+                raise PHError(f"refusing to write canonical {rel}: {reason}")
+            apply_file(dest, data)
+            continue
         if is_docs_rel(rel):
             kind, reason, _problem = classify_docs_scaffold(repo, dest, data)
             if kind == "skip":
@@ -1252,18 +1550,46 @@ def apply_symlink_adapters(repo: Path) -> None:
         apply_one_symlink(dest, src, repo)
 
 
-def preflight_blocks(report: Report, repo: Path, action: str) -> None:
+def preflight_blocks(report: Report, repo: Path, action: str, *, adopt: bool = False) -> None:
     tracked = tracked_worktrees(repo)
     if tracked:
         report.add("block", ".worktrees", f"tracked worktree paths exist: {', '.join(tracked[:8])}")
     root_agents = repo / "AGENTS.md"
     canonical = repo / ".agents" / "AGENTS.md"
-    if action == "init" and (root_agents.exists() or root_agents.is_symlink()) and not canonical.exists():
+    if (
+        action == "init"
+        and not adopt
+        and (root_agents.exists() or root_agents.is_symlink())
+        and not canonical.exists()
+    ):
         report.add(
             "block",
             "AGENTS.md",
-            "migration blocked: root AGENTS.md exists but .agents/AGENTS.md does not; will not merge",
+            "migration blocked: root AGENTS.md exists but .agents/AGENTS.md does not; will not merge; "
+            "由会话读取既有规则生成 adopt 计划后，用 init --adopt-plan 整合",
         )
+
+
+def check_write_ancestor_conflicts(report: Report) -> None:
+    """Conflict before apply when one planned write is an ancestor of another.
+
+    docs/a and docs/a/b.md in the same write set cannot both materialize;
+    without this gate apply would write half the set and then fail.
+    """
+
+    writes = {item.path for item in report.items if item.kind == "write"}
+    for rel in sorted(writes):
+        parts = rel.split("/")
+        for i in range(1, len(parts)):
+            ancestor = "/".join(parts[:i])
+            if ancestor in writes:
+                report.add(
+                    "conflict",
+                    rel,
+                    f"planned write set uses {ancestor} as both file and directory",
+                    PROBLEM_NOT_DIRECTORY,
+                )
+                break
 
 
 def check_portable(report: Report, repo: Path) -> None:
@@ -1376,31 +1702,44 @@ def check_common(report: Report, repo: Path, *, candidate: dict | None = None) -
     return data
 
 
-def cmd_init(repo: Path, mode: str, apply: bool) -> Report:
+def cmd_init(repo: Path, mode: str, apply: bool, adopt: dict | None = None) -> Report:
     assert_scaffold_not_recursive()
     report = Report("init", mode, apply)
-    preflight_blocks(report, repo, "init")
-    if apply and mode == "symlink" and not report.blocked:
-        try:
-            ensure_symlink_supported(
-                repo,
-                [
-                    repo / "AGENTS.md",
-                    repo / "CLAUDE.md",
-                    repo / ".claude" / "skills",
-                    repo / ".codex" / "skills",
-                ],
-            )
-        except PHError as exc:
-            report.add("block", ".", str(exc))
+    preflight_blocks(report, repo, "init", adopt=adopt is not None)
     if report.blocked:
         return report
-    plan_scaffold(report, repo, mode)
+    skip_rels = frozenset(adopt["files"]) if adopt is not None else frozenset()
+    if adopt is not None:
+        # Whole-set source pin check; drift blocks before anything is planned.
+        check_adopt_sources(report, repo, adopt)
+        plan_adopt_files(report, repo, adopt)
+    plan_scaffold(report, repo, mode, skip_rels=skip_rels)
     plan_self_install(report, repo)
     plan_gitignore(report, repo)
-    plan_init_adapters(report, repo, mode)
+    plan_init_adapters(report, repo, mode, adopt=adopt)
+    check_write_ancestor_conflicts(report)
     if apply and not report.blocked:
-        apply_scaffold(repo, mode)
+        if adopt is not None and not check_adopt_sources(report, repo, adopt):
+            return report
+        # Probe only after preflight passed and the complete plan has no
+        # conflicts, so a doomed run never writes probe litter first.
+        if mode == "symlink":
+            try:
+                ensure_symlink_supported(
+                    repo,
+                    [
+                        repo / "AGENTS.md",
+                        repo / "CLAUDE.md",
+                        repo / ".claude" / "skills",
+                        repo / ".codex" / "skills",
+                    ],
+                )
+            except PHError as exc:
+                report.add("block", ".", str(exc))
+                return report
+        if adopt is not None:
+            apply_adopt_files(repo, adopt)
+        apply_scaffold(repo, mode, skip_rels=skip_rels)
         apply_self_install(repo)
         apply_gitignore(repo)
         if mode == "portable":
@@ -1410,31 +1749,49 @@ def cmd_init(repo: Path, mode: str, apply: bool) -> Report:
     return report
 
 
-def plan_init_adapters(report: Report, repo: Path, mode: str) -> None:
+def plan_init_adapters(report: Report, repo: Path, mode: str, adopt: dict | None = None) -> None:
     """Describe adapters using the layout init would produce, including new skills."""
 
     virtual_skills = set(skill_names(repo)) | set(REQUIRED_SKILLS)
     if mode == "portable":
-        canonical_src = scaffold_root() / ".agents" / "AGENTS.md"
-        if (repo / ".agents" / "AGENTS.md").is_file():
-            canonical_src = repo / ".agents" / "AGENTS.md"
-        root_agents = repo / "AGENTS.md"
-        canonical_in_repo = repo / ".agents" / "AGENTS.md"
-        if (
-            canonical_in_repo.is_file()
-            and root_agents.exists()
-            and not root_agents.is_symlink()
-            and is_hardlink_to(root_agents, canonical_in_repo)
-        ):
-            report.add(
-                "conflict",
-                "AGENTS.md",
-                "portable root AGENTS copy: hardlink is not allowed",
-                PROBLEM_HARDLINK,
+        if adopt is not None:
+            # Adapters derive from the reviewed candidate canonical, not the
+            # legacy bodies; pinned root entries may convert to copy/stub.
+            plan_authorized_write(
+                report,
+                repo / "AGENTS.md",
+                adopt["files"][ADOPT_CANONICAL].encode("utf-8"),
+                "adopt portable root AGENTS copy",
+                repo,
+            )
+            plan_authorized_write(
+                report,
+                repo / "CLAUDE.md",
+                CLAUDE_STUB.encode("utf-8"),
+                "adopt portable CLAUDE stub",
+                repo,
             )
         else:
-            plan_write_file(report, root_agents, canonical_src.read_bytes(), "portable root AGENTS copy", repo)
-        plan_write_file(report, repo / "CLAUDE.md", CLAUDE_STUB.encode("utf-8"), "portable CLAUDE stub", repo)
+            canonical_src = scaffold_root() / ".agents" / "AGENTS.md"
+            if (repo / ".agents" / "AGENTS.md").is_file():
+                canonical_src = repo / ".agents" / "AGENTS.md"
+            root_agents = repo / "AGENTS.md"
+            canonical_in_repo = repo / ".agents" / "AGENTS.md"
+            if (
+                canonical_in_repo.is_file()
+                and root_agents.exists()
+                and not root_agents.is_symlink()
+                and is_hardlink_to(root_agents, canonical_in_repo)
+            ):
+                report.add(
+                    "conflict",
+                    "AGENTS.md",
+                    "portable root AGENTS copy: hardlink is not allowed",
+                    PROBLEM_HARDLINK,
+                )
+            else:
+                plan_write_file(report, root_agents, canonical_src.read_bytes(), "portable root AGENTS copy", repo)
+            plan_write_file(report, repo / "CLAUDE.md", CLAUDE_STUB.encode("utf-8"), "portable CLAUDE stub", repo)
         extras = extra_skill_sources()
         for name in sorted(virtual_skills):
             if name == "ph-init":
@@ -1558,6 +1915,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--apply", action="store_true", help="Write planned changes. Required for sync writes; init is dry-run without it.")
     parser.add_argument("--mode", choices=MODES, default=None, help="portable (default for init) or symlink. Locked per repository.")
     parser.add_argument("--repo", default=None, help="Git repository root or a path inside it.")
+    parser.add_argument(
+        "--adopt-plan",
+        default=None,
+        metavar="PATH",
+        help="Adopt an existing uninstalled repo from a session-generated merge plan (init only).",
+    )
     return parser
 
 
@@ -1566,11 +1929,22 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.action == "check" and args.apply:
         parser.error("check is read-only; do not pass --apply")
+    if args.adopt_plan and args.action != "init":
+        parser.error("--adopt-plan only applies to init")
     try:
         repo = find_repo(args.repo)
+        adopt = None
+        if args.adopt_plan:
+            adopt = load_adopt_plan(args.adopt_plan, repo)
+            manifest = repo / ".agents" / "ph.json"
+            if manifest.exists() or manifest.is_symlink():
+                raise PHError(
+                    "PH is already installed in this repository; "
+                    "adopt cannot overwrite or upgrade it; use ph-merge-update"
+                )
         mode = resolve_mode(repo, args.mode, args.action)
         if args.action == "init":
-            report = cmd_init(repo, mode, args.apply)
+            report = cmd_init(repo, mode, args.apply, adopt=adopt)
         elif args.action == "check":
             report = cmd_check(repo, mode)
         else:

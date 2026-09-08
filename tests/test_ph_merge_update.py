@@ -45,6 +45,9 @@ CHAIN_110 = [
     "init-docs-workflow",
     "docs-guidance",
     "docs-project-preserve",
+    "adopt-plan-init",
+    "adopt-existing-content",
+    "init-report-coverage",
 ]
 CHAIN_100 = ["intent-domain", *CHAIN_110]
 CHAIN_112 = [
@@ -273,7 +276,8 @@ class MergeUpdateTests(unittest.TestCase):
             retained[path] = path.read_bytes()
         inspected = ph_merge_update.inspect_payload(repo)
         ids = [item["id"] for item in inspected["suggested_state"]["items"]]
-        self.assertEqual(ids, ["init-docs-workflow", "docs-guidance", "docs-project-preserve"])
+        self.assertEqual(ids, ["init-docs-workflow", "docs-guidance", "docs-project-preserve",
+                               "adopt-plan-init", "adopt-existing-content", "init-report-coverage"])
         state = self.write_state(repo, from_version="1.1.2", items=ids)
         before_manifest = manifest_path.read_bytes()
         for status in ("pending", "blocked"):

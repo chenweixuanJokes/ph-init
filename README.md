@@ -4,9 +4,9 @@ PH（Project Harness）的正式分发入口。唯一源：
 
 `https://github.com/chenweixuanJokes/ph-init.git`
 
-本批版本为 **1.1.3**（Schema **1.1.1**，十个必需 Skill）。`latest` 取数值最大的稳定 tag，排除预发布与非版本标签，并固定到该 tag 的 commit。尚无稳定 tag 或查询失败时，初始化必须停止，不能把 `main`、工作区或眼前这份本地 `assets/scaffold` 当成最新正式版。
+本批版本为 **1.1.4**（Schema **1.1.1**，十个必需 Skill）。`latest` 取数值最大的稳定 tag，排除预发布与非版本标签，并固定到该 tag 的 commit。尚无稳定 tag 或查询失败时，初始化必须停止，不能把 `main`、工作区或眼前这份本地 `assets/scaffold` 当成最新正式版。
 
-本仓库是安装、升级与初始化文档材料。Python 的 `init` / `check` / `sync` 只做确定性的安装、检查与适配层同步；`ph-init` Skill 在安装后的同一会话中通过 subagent 补齐项目文档。已接入项目升正式版用 `ph-merge-update`，不要 `init --apply` 覆盖定制，不要在目标仓库 `git pull`。
+本仓库是安装、升级与初始化文档材料。Python 的 `init` / `check` / `sync` 只做确定性的安装、检查与适配层同步；`ph-init` Skill 在安装后的同一会话中通过 subagent 补齐项目文档。存量项目接入不先落模板盖旧正文：会话在仓外生成 `sources` 快照与合并候选，经 `init --adopt-plan` 受控安装。已接入项目升正式版用 `ph-merge-update`，不要 `init --apply` 覆盖定制，不要在目标仓库 `git pull`。
 
 Schema 与发布版本独立维护。1.1.1 引入十 Skill 契约；本批保留该 Schema，不新增必需 Skill。
 
@@ -30,9 +30,13 @@ Schema 与发布版本独立维护。1.1.1 引入十 Skill 契约；本批保留
 
 详见随包安装的[初始化与文档补全](./assets/scaffold/docs/约束规范/工程规范/初始化与文档补全.md)，其中包含项目级 harness 内容清单的逐项落点；新增[安全与配置](./assets/scaffold/docs/约束规范/工程规范/安全与配置.md)、[构建发布与运维](./assets/scaffold/docs/约束规范/工程规范/构建发布与运维.md)，并细化各端、用例和 Wiki 模板。
 
+- 存量内容用旧内容接入：会话盘点七类证据（模块、代码、配置、真实依赖、测试、CI、旧约束）后在**目标仓外**生成合并候选 plan，`init --adopt-plan` 校验 `sources` 哈希一致才落盘；已有正文优先复用 / 引用登记，不复制第二套。
+- `--adopt-plan` 仅用于尚无 `.agents/ph.json` 的目标；已安装仓库拒绝 adopt，升正式版走 `ph-merge-update`。已安装同版重跑 init 保留定制 canonical。
+- 接入前的旧文档目录（如 `docs/specs/`、`docs/domains/`、`docs/plans/`）按内容归并进 `约束规范/`、`意图/`、`项目Wiki/`，不留旧目录、空壳或软链；摘要 + 深链指向归并后的正文，被引用旧规范保持效力。写入或移走前把原文备份到 `.agents/archived/`。内核 adopt 不自动搬移或删除。
 - 已有安全普通 `docs/**` 文件由安装内核保留，缺失才安装；会话按段落补缺并维护索引，不整树覆盖。
 - 区分已接受规则、当前事实、待采纳建议和待核实项；不编造负责人、历史决策、意图、记忆或测试通过记录。
-- 安装 check 通过不等于文档补全完成。网络或子任务失败要单独记录，文档可按磁盘实态续做，不重跑 init。
+- 补全过程记录在 `.agents/init-report.md` 覆盖报告：矩阵每个独立 id 一行（落点、仓内证据、结果、说明），结果只用已核验 / 复用 / 不适用 / 待核实 / 冲突。
+- 安装 check 通过不等于文档补全完成。网络或子任务失败要单独记录，文档可按磁盘实态与 `init-report` 续做，不重跑 init。
 - 升级只引入本次迁移要求的指引，保护既有正文和 subagent 产物；完整文档重建不属于普通 merge-update。
 
 ## 根安装入口（clone 后准备正式版）
@@ -100,8 +104,8 @@ python3 <root>/scripts/ph_merge_update.py finalize --apply --repo /path/to/targe
 ## 命令
 
 ```bash
-python3 scripts/ph_release.py prepare --version latest|1.1.3 --repo <git-root>
-python3 scripts/ph_init.py init  [--apply] [--mode portable|symlink] [--repo <git-root>]
+python3 scripts/ph_release.py prepare --version latest|1.1.4 --repo <git-root>
+python3 scripts/ph_init.py init  [--apply] [--adopt-plan <plan.json>] [--mode portable|symlink] [--repo <git-root>]
 python3 scripts/ph_init.py check [--mode portable|symlink] [--repo <git-root>]
 python3 scripts/ph_init.py sync  [--apply] [--mode portable|symlink] [--repo <git-root>]
 python3 scripts/ph_merge_update.py inspect --repo <git-root>
@@ -115,6 +119,7 @@ python3 scripts/ph_merge_update.py finalize [--apply] --repo <git-root>
 
 - 不加 `--apply` 不写目标
 - 非 docs 冲突 fail-closed；已有安全普通 docs 保留待会话审阅，不安全路径仍阻断
+- `--adopt-plan` 的候选只允许 canonical `.agents/AGENTS.md` 与 `docs/**`；plan 在仓外生成，不写秘密 / 令牌；已装仓库拒绝 adopt
 - 拒绝嵌套 symlink / junction、仓外路径、hardlink 充当软链、受跟踪的 `.worktrees/`
 - 不 push、不删分支、不改 `core.symlinks`、不对目标 `git pull`
 
@@ -153,5 +158,6 @@ ph-init/
 ├── scripts/            # ph_release / ph_init / ph_merge_update；build_* 非发布源
 ├── assets/scaffold/    # 脚手架（含另外九个 Skill，不含嵌套 ph-init）
 ├── tests/
-└── evals/
+├── evals/
+└── docs/               # 分发仓维护文档（不进发行树）
 ```
