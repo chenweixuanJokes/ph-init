@@ -376,6 +376,51 @@ class InitAdoptionTests(unittest.TestCase):
         self.assertEqual((repo / ".agents" / "AGENTS.md").read_text(encoding="utf-8"), customized)
         self.assertEqual((repo / "AGENTS.md").read_text(encoding="utf-8"), customized)
 
+    def test_init_on_older_install_hands_off_to_same_session_merge(self):
+        repo = self.git_repo("ph-init-oldver-")
+        agents = repo / ".agents"
+        agents.mkdir()
+        custom = "# 定制 canonical\n已装旧版不应被 init 覆盖。\n"
+        (agents / "AGENTS.md").write_text(custom, encoding="utf-8")
+        (repo / "AGENTS.md").write_text(custom, encoding="utf-8")
+        (agents / "ph.json").write_text(
+            json.dumps({"template_version": "1.1.4", "adapter_mode": "portable"}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        before_manifest = (agents / "ph.json").read_bytes()
+        for extra in ((), ("--apply",)):
+            with self.subTest(extra=extra):
+                proc = ph(repo, "init", *extra)
+                self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                self.assertIn("ph-merge-update", proc.stderr, proc.stderr)
+                self.assertIn("1.1.4", proc.stderr, proc.stderr)
+                self.assertIn("1.1.5", proc.stderr, proc.stderr)
+                self.assertIn("inspect", proc.stderr, proc.stderr)
+                self.assertIn("same session", proc.stderr, proc.stderr)
+                self.assertEqual((agents / "ph.json").read_bytes(), before_manifest)
+                self.assertEqual((agents / "AGENTS.md").read_text(encoding="utf-8"), custom)
+                self.assertEqual((repo / "AGENTS.md").read_text(encoding="utf-8"), custom)
+                self.assertFalse((repo / "CLAUDE.md").exists())
+
+    def test_init_on_newer_install_refuses_downgrade(self):
+        repo = self.git_repo("ph-init-newver-")
+        agents = repo / ".agents"
+        agents.mkdir()
+        custom = "# 比本包新的已装版本\n"
+        (agents / "AGENTS.md").write_text(custom, encoding="utf-8")
+        (agents / "ph.json").write_text(
+            json.dumps({"template_version": "9.9.9"}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        before = (agents / "ph.json").read_bytes()
+        proc = ph(repo, "init", "--apply")
+        self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("9.9.9", proc.stderr, proc.stderr)
+        self.assertIn("1.1.5", proc.stderr, proc.stderr)
+        self.assertIn("downgrade", proc.stderr, proc.stderr)
+        self.assertEqual((agents / "ph.json").read_bytes(), before)
+        self.assertEqual((agents / "AGENTS.md").read_text(encoding="utf-8"), custom)
+
     # -- blocking: drift, shapes, mismatch, already installed ------------------
 
     def test_source_drift_between_dry_and_apply_blocks_and_writes_nothing(self):

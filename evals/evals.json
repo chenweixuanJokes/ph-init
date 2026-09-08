@@ -16,7 +16,7 @@
     {
       "id": 3,
       "prompt": "仓库已按 PH 1.0.0 装过（六个 Skill，意图在进行中）。请升到官方最新正式版，先预检。",
-      "expected_output": "不把 init --apply 当升级。转交 ph-merge-update（可从新发行根 scaffold 读取该 Skill）。prepare 后 inspect 只读，识别六 Skill 历史布局。本 eval 不表示已实测。",
+      "expected_output": "触发 ph-init，不把 init --apply 当升级。本会话读发行根 merge-update Skill 并执行：prepare 后 inspect 只读，识别六 Skill 历史布局，再语义合并、verify、finalize。不另开技能。本 eval 不表示已实测。",
       "files": []
     },
     {
@@ -101,6 +101,12 @@
       "id": 17,
       "prompt": "docs/plans/ 里有一份真实迭代计划，标题、日期和原编号都在，但找不到评审纪要或批准记录。接入 PH 时能不能直接写成已评审通过的意图？",
       "expected_output": "旧计划只有真实源才整理进意图：保留原题、来源、原有标识和日期，缺失字段标未知，不推定评审、批准或测试通过。交付留在实施并在记录注明原有结果；非计划内容归 Wiki 或规范。调试实录不冒充访谈，不造纪要。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 18,
+      "prompt": "这个仓库已经按 PH 1.1.4 初始化过，用户现在说：初始化 PH。",
+      "expected_output": "触发 ph-init。prepare 后发现已装且版本旧于发行根：停 init --apply / --adopt-plan，本会话读发行根 ph-merge-update Skill，跑 inspect → 按迁移说明语义合并 → verify → finalize。不另开技能，不自动 finalize。本 eval 不表示已实测。",
       "files": []
     }
   ]

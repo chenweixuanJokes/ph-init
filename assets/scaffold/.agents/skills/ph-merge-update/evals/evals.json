@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "这个仓库已经按 PH 1.0.0 装过，只有六个 Skill，意图还在 docs/意图/进行中。请升到官方最新正式版。先预检，我确认后再写。",
-      "expected_output": "触发 ph-merge-update 而不是 init --apply 或目标仓 git pull。prepare 固定 latest 稳定 tag/commit；inspect 识别六 Skill + 进行中；按 1.0.0→1.1.0→1.1.1 建 state（含 intent-domain 与 1.1.1 六项）。dry-run 不写盘。确认后合并框架与导航，保留进行中业务条目，不批量改派；candidate check 通过前不改 ph.json 版本。报告写差异与保护内容。本 eval 是行为定义，不表示已实测。",
+      "expected_output": "由 ph-init 会话执行本文件步骤，而不是 init --apply 或目标仓 git pull，也不另开技能。prepare 固定 latest 稳定 tag/commit；inspect 识别六 Skill + 进行中；按 1.0.0→1.1.0→1.1.1 建 state（含 intent-domain 与 1.1.1 六项）。dry-run 不写盘。确认后合并框架与导航，保留进行中业务条目，不批量改派；candidate check 通过前不改 ph.json 版本。报告写差异与保护内容。本 eval 是行为定义，不表示已实测。",
       "files": []
     },
     {
@@ -28,7 +28,7 @@
     {
       "id": 5,
       "prompt": "这个刚 git init 的空仓库还没有 .agents，按 PH 标准初始化。",
-      "expected_output": "不触发 ph-merge-update；交给 ph-init 的在线 prepare + 该发行根 init。",
+      "expected_output": "不走本文件的升级步骤；交给 ph-init 的在线 prepare + 该发行根 init / adopt。",
       "files": []
     },
     {

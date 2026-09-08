@@ -6,6 +6,13 @@ Schema 与发布版本独立。`1.1.1` 批因版本锁与必需 Skill 清单变�
 
 尚未打过历史 tag。`1.0.0` 与两套 `1.1.0` 命名是可追溯提交，不是已发布 tag。首个正式 tag 是 `v1.1.1`，不追认 `v1.1.0`。
 
+## 1.1.5
+
+- 用户入口只有 `ph-init`：说「初始化 PH」「安装 harness」「升级 PH」都先 prepare，再由本会话分流。已装且版本旧于发行根时，停 `init --apply` / `--adopt-plan`，同一会话按发行根 merge-update 步骤做完（inspect → 语义合并 → verify → finalize），不另开技能，不自动 finalize。
+- 已装且已是发行根版本：不升级；检查 / 同步 / 续做文档走现有分支，同版重跑仍保留定制 canonical。仓内版本新于本包则 fail-closed，不降级。
+- 内核仍是两套：`ph_init.py` 不调用 inspect / finalize，也不自动改版本；`ph-merge-update` Skill 与十个必需 Skill 清单保留，给会话当升级步骤用。
+- Schema 保持 `1.1.1`。迁移项：`init-unified-entry`。
+
 ## 1.1.4
 
 - 存量接入改为“已有内容优先”：会话盘点七类证据（模块、代码、配置、真实依赖、测试、CI、旧约束）后在目标仓外生成 `sources` 哈希快照与合并候选 plan，`init --adopt-plan` 核对哈希一致才落盘；候选只允许 canonical `.agents/AGENTS.md`（必需）与 `docs/**`，已有正文优先复用 / 引用登记，不复制第二套。

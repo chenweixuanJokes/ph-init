@@ -4,9 +4,9 @@ PH（Project Harness）的正式分发入口。唯一源：
 
 `https://github.com/chenweixuanJokes/ph-init.git`
 
-本批版本为 **1.1.4**（Schema **1.1.1**，十个必需 Skill）。`latest` 取数值最大的稳定 tag，排除预发布与非版本标签，并固定到该 tag 的 commit。尚无稳定 tag 或查询失败时，初始化必须停止，不能把 `main`、工作区或眼前这份本地 `assets/scaffold` 当成最新正式版。
+本批版本为 **1.1.5**（Schema **1.1.1**，十个必需 Skill）。`latest` 取数值最大的稳定 tag，排除预发布与非版本标签，并固定到该 tag 的 commit。尚无稳定 tag 或查询失败时，初始化必须停止，不能把 `main`、工作区或眼前这份本地 `assets/scaffold` 当成最新正式版。
 
-本仓库是安装、升级与初始化文档材料。Python 的 `init` / `check` / `sync` 只做确定性的安装、检查与适配层同步；`ph-init` Skill 在安装后的同一会话中通过 subagent 补齐项目文档。存量项目接入不先落模板盖旧正文：会话在仓外生成 `sources` 快照与合并候选，经 `init --adopt-plan` 受控安装。已接入项目升正式版用 `ph-merge-update`，不要 `init --apply` 覆盖定制，不要在目标仓库 `git pull`。
+本仓库是安装、升级与初始化文档材料。用户只说「初始化 PH」「安装 harness」「升级 PH」都走 `ph-init`。Python 的 `init` / `check` / `sync` 只做确定性的安装、检查与适配层同步；`ph-init` Skill 在安装后的同一会话中通过 subagent 补齐项目文档。存量项目接入不先落模板盖旧正文：会话在仓外生成 `sources` 快照与合并候选，经 `init --adopt-plan` 受控安装。已接入且版本旧于发行根时，同一会话按 merge-update 步骤升级，不要 `init --apply` 覆盖定制，不要另开技能，不要在目标仓库 `git pull`。
 
 Schema 与发布版本独立维护。1.1.1 引入十 Skill 契约；本批保留该 Schema，不新增必需 Skill。
 
@@ -14,8 +14,8 @@ Schema 与发布版本独立维护。1.1.1 引入十 Skill 契约；本批保留
 
 - `.agents/` 唯一规范源：`AGENTS.md`、`ph.json` + `ph.schema.json`
 - 十个 `ph-*` Skill：
-  - `ph-init`：自装后常驻，提供 check / sync
-  - `ph-merge-update`：已安装项目按迁移链合并升级
+  - `ph-init`：用户入口；自装后常驻，提供 check / sync，已装旧版由该会话按升级步骤做完
+  - `ph-merge-update`：已安装项目按迁移链合并升级的步骤（由 ph-init 会话执行）
   - `ph-worktree-enter` / `ph-worktree-exit`
   - `ph-memory-capture` / `ph-memory-archive` / `ph-memory-ask`
   - `ph-intent-new` / `ph-intent-impl` / `ph-intent-drop`
@@ -31,7 +31,7 @@ Schema 与发布版本独立维护。1.1.1 引入十 Skill 契约；本批保留
 详见随包安装的[初始化与文档补全](./assets/scaffold/docs/约束规范/工程规范/初始化与文档补全.md)，其中包含项目级 harness 内容清单的逐项落点；新增[安全与配置](./assets/scaffold/docs/约束规范/工程规范/安全与配置.md)、[构建发布与运维](./assets/scaffold/docs/约束规范/工程规范/构建发布与运维.md)，并细化各端、用例和 Wiki 模板。
 
 - 存量内容用旧内容接入：会话盘点七类证据（模块、代码、配置、真实依赖、测试、CI、旧约束）后在**目标仓外**生成合并候选 plan，`init --adopt-plan` 校验 `sources` 哈希一致才落盘；已有正文优先复用 / 引用登记，不复制第二套。
-- `--adopt-plan` 仅用于尚无 `.agents/ph.json` 的目标；已安装仓库拒绝 adopt，升正式版走 `ph-merge-update`。已安装同版重跑 init 保留定制 canonical。
+- `--adopt-plan` 仅用于尚无 `.agents/ph.json` 的目标；已安装仓库拒绝 adopt。已装旧版由 ph-init 会话按 merge-update 步骤做完升级，不另开技能。已安装同版重跑 init 保留定制 canonical。
 - 接入前的旧文档目录（如 `docs/specs/`、`docs/domains/`、`docs/plans/`）按内容归并进 `约束规范/`、`意图/`、`项目Wiki/`，不留旧目录、空壳或软链；摘要 + 深链指向归并后的正文，被引用旧规范保持效力。写入或移走前把原文备份到 `.agents/archived/`。内核 adopt 不自动搬移或删除。
 - 已有安全普通 `docs/**` 文件由安装内核保留，缺失才安装；会话按段落补缺并维护索引，不整树覆盖。
 - 区分已接受规则、当前事实、待采纳建议和待核实项；不编造负责人、历史决策、意图、记忆或测试通过记录。
@@ -71,8 +71,8 @@ git clone https://github.com/chenweixuanJokes/ph-init.git ~/.agents/skills/ph-in
 
 1. 用入口中的 `ph_release.py` 对目标 `prepare`。旧 1.1.0 入口没有此脚本时，先将固定 GitHub 源 clone 到新的仓外目录，从新 clone 运行 prepare，不覆盖旧项目入口。
 2. 只读 JSON 的 `root`。
-3. 读 `<root>/SKILL.md`。已初始化升级则读 `<root>/assets/scaffold/.agents/skills/ph-merge-update/SKILL.md`，不要求旧项目已经有该 Skill。
-4. 执行 `<root>/scripts/ph_init.py` 或 `<root>/scripts/ph_merge_update.py`。
+3. 读 `<root>/SKILL.md`。已装旧版则同一会话再读 `<root>/assets/scaffold/.agents/skills/ph-merge-update/SKILL.md`，不要求旧项目已经有该 Skill，也不另开技能。
+4. 未安装执行 `<root>/scripts/ph_init.py`；已装旧版执行 `<root>/scripts/ph_merge_update.py`。
 5. 不要继续用 shadow 目录的 `assets/scaffold` 当最新模板，不要对目标 `git pull`。
 
 本地检查 / 同步用项目已装内核，无需网络：
@@ -86,7 +86,7 @@ python3 <installed-ph-init>/scripts/ph_init.py sync --repo /path/to/target-repo
 
 ## 已安装项目升级
 
-见发行根的 `ph-merge-update` Skill。摘要：
+对外入口仍是 `ph-init`。已装且版本旧于发行根时，同一会话按发行根 `ph-merge-update` 步骤做完，不要另开技能，不要 `init --apply`。摘要：
 
 ```bash
 python3 <root>/scripts/ph_release.py prepare --version latest --repo /path/to/target-repo
@@ -104,7 +104,7 @@ python3 <root>/scripts/ph_merge_update.py finalize --apply --repo /path/to/targe
 ## 命令
 
 ```bash
-python3 scripts/ph_release.py prepare --version latest|1.1.4 --repo <git-root>
+python3 scripts/ph_release.py prepare --version latest|1.1.5 --repo <git-root>
 python3 scripts/ph_init.py init  [--apply] [--adopt-plan <plan.json>] [--mode portable|symlink] [--repo <git-root>]
 python3 scripts/ph_init.py check [--mode portable|symlink] [--repo <git-root>]
 python3 scripts/ph_init.py sync  [--apply] [--mode portable|symlink] [--repo <git-root>]

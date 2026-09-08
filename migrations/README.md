@@ -49,3 +49,4 @@
 | [1.1.1 → 1.1.2](./1.1.1-to-1.1.2.md) | 意图交付留实施，取消旧状态目录 | `intent-no-completed` `intent-legacy-inprogress` |
 | [1.1.2 → 1.1.3](./1.1.2-to-1.1.3.md) | init 会话补全文档与项目内容保护 | `init-docs-workflow` `docs-guidance` `docs-project-preserve` |
 | [1.1.3 → 1.1.4](./1.1.3-to-1.1.4.md) | 存量约束合并接入与全量文档取证 | `adopt-plan-init` `adopt-existing-content` `init-report-coverage` |
+| [1.1.4 → 1.1.5](./1.1.4-to-1.1.5.md) | 已装旧版由 ph-init 会话做完升级 | `init-unified-entry` |

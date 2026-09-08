@@ -33,9 +33,16 @@ class SkillContractTests(unittest.TestCase):
         cls.skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
 
     def test_batch_version_bumped_with_unchanged_schema(self):
-        self.assertIn("1.1.4", self.skill)
-        self.assertNotIn("1.1.3", self.skill)
+        self.assertIn("1.1.5", self.skill)
+        self.assertNotIn("1.1.4", self.skill)
         self.assertIn("1.1.1", self.skill)  # schema unchanged this batch
+
+    def test_skill_keeps_upgrade_in_same_session(self):
+        self.assertIn("本会话按那份执行", self.skill)
+        self.assertIn("ph_merge_update.py", self.skill)
+        self.assertIn("不另开技能", self.skill)
+        self.assertNotIn("转交", self.skill)
+        self.assertNotIn("转 merge-update", self.skill)
 
     def test_mode_default_infers_before_portable(self):
         mode_lines = [line for line in self.skill.splitlines() if "--mode" in line]
@@ -231,7 +238,9 @@ class EvalsCoverageTests(unittest.TestCase):
         self.assertIn(".agents/archived", blob)
         self.assertNotIn("仓外备份", blob)
         self.assertNotIn("保留原位", blob)
-        self.assertGreaterEqual(len(ids), 17)
+        self.assertGreaterEqual(len(ids), 18)
+        self.assertIn("不另开技能", blob)
+        self.assertNotIn("转交 ph-merge-update", blob)
 
     def test_every_eval_disclaims_actual_execution(self):
         for item in self.items:

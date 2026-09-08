@@ -1212,17 +1212,60 @@ def apply_adopt_files(repo: Path, plan: dict) -> None:
         apply_file(repo / rel, data)
 
 
-def installed_same_version(repo: Path) -> bool:
-    """True when a valid manifest declares this exact release version."""
+def semver_tuple(version: str) -> tuple[int, int, int]:
+    parts = version.split(".")
+    return int(parts[0]), int(parts[1]), int(parts[2])
+
+
+def peek_installed_template_version(repo: Path) -> str | None:
+    """Return a regular manifest's template_version, or None if absent/unreadable."""
 
     manifest = repo / ".agents" / "ph.json"
     if manifest.is_symlink() or is_disallowed_reparse(manifest) or not manifest.is_file():
-        return False
+        return None
     try:
         data = read_json(manifest)
     except PHError:
-        return False
-    return data.get("template_version") == RELEASE_VERSION
+        return None
+    value = data.get("template_version")
+    if isinstance(value, str) and SEMVER.fullmatch(value):
+        return value
+    return None
+
+
+def installed_same_version(repo: Path) -> bool:
+    """True when a valid manifest declares this exact release version."""
+
+    return peek_installed_template_version(repo) == RELEASE_VERSION
+
+
+def refuse_init_on_version_mismatch(repo: Path) -> None:
+    """Init is not an upgrader. A version-mismatched install stays on disk.
+
+    The session that invoked init should continue from this package's
+    merge-update steps. This function does not import or run that kernel.
+    """
+
+    installed = peek_installed_template_version(repo)
+    if installed is None or installed == RELEASE_VERSION:
+        return
+    if semver_tuple(installed) > semver_tuple(RELEASE_VERSION):
+        raise PHError(
+            f"PH is already installed at template_version {installed!r}; "
+            f"this package is {RELEASE_VERSION!r}. "
+            "init --apply and --adopt-plan cannot overwrite or downgrade an installed repository. "
+            "Use a matching or newer official package; do not downgrade."
+        )
+    inspect = f"python3 {skill_root()}/scripts/ph_merge_update.py inspect --repo {repo}"
+    raise PHError(
+        f"PH is already installed at template_version {installed!r}; "
+        f"this package is {RELEASE_VERSION!r}. "
+        "init --apply and --adopt-plan cannot overwrite or upgrade an installed repository. "
+        "In this same session, prepare this release root, then run: "
+        f"{inspect} "
+        "and continue the ph-merge-update steps from that release root "
+        "(semantic merge, verify, finalize). Do not open another skill."
+    )
 
 
 def classify_canonical_scaffold(repo: Path, dest: Path, data: bytes) -> tuple[str, str, str | None]:
@@ -1933,13 +1976,17 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--adopt-plan only applies to init")
     try:
         repo = find_repo(args.repo)
+        if args.action == "init":
+            refuse_init_on_version_mismatch(repo)
         adopt = None
         if args.adopt_plan:
             adopt = load_adopt_plan(args.adopt_plan, repo)
             manifest = repo / ".agents" / "ph.json"
             if manifest.exists() or manifest.is_symlink():
+                installed = peek_installed_template_version(repo) or "unknown"
                 raise PHError(
-                    "PH is already installed in this repository; "
+                    "PH is already installed in this repository "
+                    f"(template_version {installed!r} -> {RELEASE_VERSION!r}); "
                     "adopt cannot overwrite or upgrade it; use ph-merge-update"
                 )
         mode = resolve_mode(repo, args.mode, args.action)

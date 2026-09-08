@@ -1,26 +1,26 @@
 ---
 name: ph-merge-update
-description: "把已安装 PH 的项目合并升级到正式发行版：从唯一 GitHub 源准备固定 tag/commit，按迁移链审阅合并，验收后再推进项目版本。用户说“升级 PH”“合并更新 PH”“同步最新 harness”“从 1.0/1.1.0 升到 1.1.1”“ph-merge-update”或旧项目没有本 Skill 却要跟官方包对齐时必须使用。不要把未初始化仓库的安装、普通 check/sync、git pull、录入/实施/废弃意图、记忆或 worktree 误判为本技能。"
+description: "已装 PH 项目升到正式发行版的步骤：从唯一 GitHub 源准备固定 tag/commit，按迁移链审阅合并，验收后再推进项目版本。用户说“升级 PH”“初始化 PH”“安装 harness”“合并更新 PH”且目标已装旧版时，由 ph-init 会话读本文件并执行，不另开技能。不要把未初始化仓库的安装、普通 check/sync、git pull、录入/实施/废弃意图、记忆或 worktree 误判为本文件的步骤。"
 ---
 
 # ph-merge-update
 
-已接入 PH 的仓库跟官方发行版对齐。Agent 按迁移说明做语义合并；脚本只读状态、验收结构和收尾。不要用 `init --apply` 覆盖定制，不要在目标仓库 `git pull`。
+已接入 PH 的仓库跟官方发行版对齐。这是 **`ph-init` 会话**在已装旧版上要执行的步骤，不是对外另开的分流技能。Agent 按迁移说明做语义合并；脚本只读状态、验收结构和收尾。不要用 `init --apply` 覆盖定制，不要在目标仓库 `git pull`。
 
 旧项目可以没有本目录。从准备好的发行根读取：
 
 `assets/scaffold/.agents/skills/ph-merge-update/SKILL.md`
 
-然后按该副本执行。
+然后由当前 `ph-init` 会话按该副本执行。
 
 ## 何时用 / 何时不用
 
-使用：项目已有 `.agents/ph.json` 与 `.agents/AGENTS.md`，用户要升到正式版或恢复未完成升级。
+使用：项目已有 `.agents/ph.json` 与 `.agents/AGENTS.md`，用户要升到正式版或恢复未完成升级。用户即使说的是「初始化 / 安装」，已装旧版也走本文件步骤。
 
 不用：
 
-- 空仓库或尚未接入 PH → `ph-init`
-- 只检查 / 同步适配层 → 项目已装的 `ph-init` `check` / `sync`
+- 空仓库或尚未接入 PH：仍由 `ph-init` 走安装 / adopt，本文件只描述已装升级步骤
+- 只检查 / 同步适配层：项目已装的 `ph-init` `check` / `sync`
 - 目标仓库拉远端、提交、推送、改可见性
 - 记忆、worktree、录入 / 实施 / 废弃意图
 
@@ -31,7 +31,7 @@ description: "把已安装 PH 的项目合并升级到正式发行版：从唯�
 准备（下载在目标仓库外）：
 
 ```text
-python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.3 --repo <target>
+python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.5 --repo <target>
 ```
 
 stdout JSON 字段：`root` `version` `tag` `commit` `source`。`source` 是固定仓库 URL 字符串。本地已有该 commit 的检查不访问网络。
@@ -88,8 +88,8 @@ python3 <release-root>/scripts/ph_merge_update.py finalize [--apply] --repo <tar
 
 ## 工作流
 
-1. **确认**。已初始化才继续。未初始化交给 `ph-init`。确认目标版本（默认 `latest`）与是否允许写入。
-2. **准备发行根**。对目标跑 `prepare`。失败则停。记下 `root/version/tag/commit`。
+1. **确认**。已初始化才继续。未初始化回到 `ph-init` 的安装 / adopt，不要在本步骤里装新仓。确认目标版本（默认 `latest`）与是否允许写入。
+2. **准备发行根**。对目标跑 `prepare`（`ph-init` 会话通常已经做过，复用同一 `root`）。失败则停。记下 `root/version/tag/commit`。
 3. **只读 inspect**。结合 manifest、真实 Skill 目录名、意图目录判定布局。可核实历史：
    - `1.0.0` 六 Skill，意图在 `进行中/`
    - `1.1.0` 旧名：`ph-intent-capture` / `plan` / `abandon`
