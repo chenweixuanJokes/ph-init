@@ -58,6 +58,14 @@
       "items": [
         "init-unified-entry"
       ]
+    },
+    {
+      "from_version": "1.1.5",
+      "to_version": "1.1.6",
+      "path": "migrations/1.1.5-to-1.1.6.md",
+      "items": [
+        "plain-user-questions"
+      ]
     }
   ]
 }

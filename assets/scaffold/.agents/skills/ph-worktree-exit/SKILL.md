@@ -21,7 +21,7 @@ description: 将 PH 管理的任务 worktree 按“验证、受控提交、合�
 - clean：跳过提交；
 - 只有 staged：只提交 index；
 - 只有 tracked unstaged：执行 `git add -u` 后提交；
-- staged 与 unstaged 并存，或存在任何 untracked 文件：停止，由用户决定范围；
+- staged 与 unstaged 并存，或存在任何 untracked 文件：停止，由用户决定范围；对用户问“这次提交要包括哪些”，见 [对用户提问](../../../docs/约束规范/工程规范/对用户提问.md) 第 4 节。
 - ignored 文件永不加入；疑似密钥文件名或异常大文件阻断；
 - 需要提交时必须提供符合项目规范的消息，保留项目 hooks、签名和 Git author 配置。
 
@@ -40,7 +40,7 @@ description: 将 PH 管理的任务 worktree 按“验证、受控提交、合�
    - 在 source worktree 以 Git 默认 fast-forward/merge 策略合并，显式关闭 autostash；
    - 在合并结果上再次运行验证；
    - 保留任务分支和 linked worktree，提示清理仍待确认。
-3. 合并后明确询问用户是否清理**本 session** 的 worktree。清理前重新核对 source 分支及交付包含关系；若存在任何 ignored 文件（包括本地配置和缓存），停止并列出路径，先由用户保全不可再生成的数据、处置可再生成产物。没有通用“忽略这些文件强制删除”开关。只有用户同意且上述条件满足，才执行：
+3. 合并后明确询问用户是否清理**本 session** 的 worktree。对用户说：“改动已经合回原来的分支。这次的隔离目录还在。要不要删掉这个目录？” 不要问内部会话名。清理前重新核对 source 分支及交付包含关系；若存在任何 ignored 文件（包括本地配置和缓存），停止并列出路径，先由用户保全不可再生成的数据、处置可再生成产物。没有通用“忽略这些文件强制删除”开关。只有用户同意且上述条件满足，才执行：
 
    ```bash
    python3 .agents/skills/ph-worktree-exit/scripts/ph_worktree.py \
@@ -58,7 +58,7 @@ description: 将 PH 管理的任务 worktree 按“验证、受控提交、合�
     continue --repo <linked-worktree> --apply
   ```
 
-- 用户决定放弃本次 merge：
+- 用户决定放弃本次 merge（对用户问“你是自己改完后继续合回，还是放弃这次合回”）：
 
   ```bash
   python3 .agents/skills/ph-worktree-exit/scripts/ph_worktree.py \

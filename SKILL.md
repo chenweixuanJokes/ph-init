@@ -25,12 +25,12 @@ description: "初始化、检查或同步本仓库的项目级 Harness（PH）�
 
 ## 唯一源与准备
 
-正式源只有 `https://github.com/chenweixuanJokes/ph-init.git`。`latest` 取数值最大的稳定 tag（排除预发布与非版本标签），并固定到该 tag 的 commit。本批版本为 `1.1.5`（Schema `1.1.1`，十个必需 Skill）。Schema 与发布版本独立，本批不改 Schema。
+正式源只有 `https://github.com/chenweixuanJokes/ph-init.git`。`latest` 取数值最大的稳定 tag（排除预发布与非版本标签），并固定到该 tag 的 commit。本批版本为 `1.1.6`（Schema `1.1.1`，十个必需 Skill）。Schema 与发布版本独立，本批不改 Schema。
 
 当前这份 Skill 可能是旧用户入口或 shadow 副本。**初始化必须先准备发行根，再读该根的 `SKILL.md` 并只执行该根脚本**。不要用眼前这份本地 `assets/scaffold` 冒充最新版。离线内核可以安装它携带的确定版本，但不代表最新正式版。
 
 ```text
-python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.5 --repo <target>
+python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.6 --repo <target>
 ```
 
 stdout JSON：`root` `version` `tag` `commit` `source`（`source` 是固定仓库 URL 字符串）。材料下在目标仓库外的隔离目录，不读不传目标内容。同一 commit 已在本地时检查可不访问网络。无 tag、网络失败、tag/commit/`release.json` 不一致：停止，不回退到未准备的本地包。
@@ -81,8 +81,8 @@ python3 <project-or-installed-ph-init>/scripts/ph_init.py sync [--apply] [--mode
    4. 没装：继续下列安装 / adopt。
 2. **初始化：准备发行根**。读该 `root` 的 `SKILL.md`，用该 root 的 `ph_init.py`。同时读该 root 的[初始化与文档补全](assets/scaffold/docs/约束规范/工程规范/初始化与文档补全.md)，不能先改准备好的发行树。
 3. **只读盘点**：核对 Git 状态与已有内容，汇总七类证据：模块、代码、配置、真实依赖（锁文件）、测试、CI、旧约束（含 `docs/` 下非 PH 命名的旧文档目录）。已有正文优先引用登记，不复制第二套；待核实项与已定性为规则 / 事实 / 建议的条目分开，不臆造 ADR、意图、访谈、记忆或测试通过。
-4. **dry-run 与报告整合**：同一 `root` 不加 `--apply` 跑 dry-run；`plan` / `skip` / `conflict` / `block` 是待整合材料，不是施工单。向用户交整合结果：直接落地、复用引用、冲突待裁决、不适用与保留范围。仅预检时不写 docs。根 `AGENTS.md` 在而 `.agents/AGENTS.md` 不在、受跟踪 `.worktrees/`、不安全链接或路径仍阻断，不能移走文件后偷偷强装。
-5. **仓外合并候选**：获得本轮授权后，会话在目标仓外生成 `sources` 快照与合并候选 plan JSON（契约见命令节）。内核 adopt 只写 canonical 与 `docs/**`，不自动搬移或删除。已有正文优先复用 / 引用登记，不复制第二套、不重写已有证据的正确内容。
+4. **dry-run 与报告整合**：同一 `root` 不加 `--apply` 跑 dry-run；`plan` / `skip` / `conflict` / `block` 是待整合材料，不是施工单。向用户交整合结果：直接落地、复用引用、冲突待裁决、不适用与保留范围。对用户说明和提问用已装或发行根的 [对用户提问](assets/scaffold/docs/约束规范/工程规范/对用户提问.md)，不要把内部字段或脚本名当问句。仅预检时不写 docs。根 `AGENTS.md` 在而 `.agents/AGENTS.md` 不在、受跟踪 `.worktrees/`、不安全链接或路径仍阻断，不能移走文件后偷偷强装。
+5. **仓外合并候选**：获得本轮授权后（对用户问“现在可以按这个范围写入吗”），会话在目标仓外生成 `sources` 快照与合并候选 plan JSON（契约见命令节）。内核 adopt 只写 canonical 与 `docs/**`，不自动搬移或删除。已有正文优先复用 / 引用登记，不复制第二套、不重写已有证据的正确内容。
 6. **adopt 安装**：用户确认候选后，同一 `root` 执行 `init --adopt-plan <plan>`，先 dry-run 再 `--apply`。`ph-init` 自装自身（含 scaffold、release 元数据、在线脚本、迁移资料）；scaffold 内不嵌套 `ph-init`。安装成功立即跑已装内核的 `check`。
 7. **逐项补全与覆盖报告**：按已装指引分阶段派发 subagent。旧目录与顶层正文按指引 1.1 归并进三域：同主题合成单一正文，附件随所属正文走，旧计划不推定评审或通过；写前把原文备份到 `.agents/archived/<日期>-pre-init/`，修活动引用与索引后再移出活树旧文件，仓内快照即是可恢复原件，未授权或冲突记未完成。先取真实栈与代码证据，再按独立文件归属补 Wiki、前端、后端、工程与测试规范；官方资料按目标实际版本实时查阅并记录 URL、版本、访问日期与采用理由，搜索只用通用技术名，不上传项目内容。主会话维护 `.agents/init-report.md` 覆盖报告：矩阵每个独立 id 一行（落点、仓内证据、结果、说明），结果只用已核验 / 复用 / 不适用 / 待核实 / 冲突；PH 通用流程条目写采用声明，不编造项目记录。改 canonical 后按原 mode 先 dry-run 再在授权范围内 `sync --apply`，重新 `check`。没有 subagent 能力则如实报告限制并串行取证。
 8. **交付或续做**：分别报告“PH 安装检查”“文档补全”结果，列已核验、复用、待采纳、待核实、不适用和冲突项。网络/子任务失败不抹掉已核验成果，也不宣称文档完成；续做读磁盘、`init-report` 与上次记录，不再 `init --apply`。需要时用刚装好的包初始化临时另一仓，确认自包含。

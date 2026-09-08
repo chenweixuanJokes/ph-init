@@ -33,8 +33,8 @@ class SkillContractTests(unittest.TestCase):
         cls.skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
 
     def test_batch_version_bumped_with_unchanged_schema(self):
-        self.assertIn("1.1.5", self.skill)
-        self.assertNotIn("1.1.4", self.skill)
+        self.assertIn("1.1.6", self.skill)
+        self.assertNotIn("1.1.5", self.skill)
         self.assertIn("1.1.1", self.skill)  # schema unchanged this batch
 
     def test_skill_keeps_upgrade_in_same_session(self):

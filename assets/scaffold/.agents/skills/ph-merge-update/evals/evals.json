@@ -16,7 +16,7 @@
     {
       "id": 3,
       "prompt": "升到 1.1.1。我们项目 AGENTS.md 写明禁止再增加任何 ph-* Skill，也禁止改意图目录名。现有的是 ph-intent-capture/plan/abandon。请直接覆盖成官方模板。",
-      "expected_output": "识别显式规则冲突，相关项 blocked 并停止受影响写入，不覆盖 AGENTS 定制、不退役冲突 Skill、不改目录名。向用户列出冲突与选项。不 finalize、不写版本、不 git commit/push。本 eval 不表示已实测。",
+      "expected_output": "识别显式规则冲突，相关项 blocked 并停止受影响写入，不覆盖 AGENTS 定制、不退役冲突 Skill、不改目录名。向用户说明这一项为什么停住，并用日常用语列出怎么处理，不把内部状态名当问句。不 finalize、不写版本、不 git commit/push。本 eval 不表示已实测。",
       "files": []
     },
     {

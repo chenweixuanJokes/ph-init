@@ -4,7 +4,7 @@ PH（Project Harness）的正式分发入口。唯一源：
 
 `https://github.com/chenweixuanJokes/ph-init.git`
 
-本批版本为 **1.1.5**（Schema **1.1.1**，十个必需 Skill）。`latest` 取数值最大的稳定 tag，排除预发布与非版本标签，并固定到该 tag 的 commit。尚无稳定 tag 或查询失败时，初始化必须停止，不能把 `main`、工作区或眼前这份本地 `assets/scaffold` 当成最新正式版。
+本批版本为 **1.1.6**（Schema **1.1.1**，十个必需 Skill）。`latest` 取数值最大的稳定 tag，排除预发布与非版本标签，并固定到该 tag 的 commit。尚无稳定 tag 或查询失败时，初始化必须停止，不能把 `main`、工作区或眼前这份本地 `assets/scaffold` 当成最新正式版。
 
 本仓库是安装、升级与初始化文档材料。用户只说「初始化 PH」「安装 harness」「升级 PH」都走 `ph-init`。Python 的 `init` / `check` / `sync` 只做确定性的安装、检查与适配层同步；`ph-init` Skill 在安装后的同一会话中通过 subagent 补齐项目文档。存量项目接入不先落模板盖旧正文：会话在仓外生成 `sources` 快照与合并候选，经 `init --adopt-plan` 受控安装。已接入且版本旧于发行根时，同一会话按 merge-update 步骤升级，不要 `init --apply` 覆盖定制，不要另开技能，不要在目标仓库 `git pull`。
 
@@ -104,7 +104,7 @@ python3 <root>/scripts/ph_merge_update.py finalize --apply --repo /path/to/targe
 ## 命令
 
 ```bash
-python3 scripts/ph_release.py prepare --version latest|1.1.5 --repo <git-root>
+python3 scripts/ph_release.py prepare --version latest|1.1.6 --repo <git-root>
 python3 scripts/ph_init.py init  [--apply] [--adopt-plan <plan.json>] [--mode portable|symlink] [--repo <git-root>]
 python3 scripts/ph_init.py check [--mode portable|symlink] [--repo <git-root>]
 python3 scripts/ph_init.py sync  [--apply] [--mode portable|symlink] [--repo <git-root>]
