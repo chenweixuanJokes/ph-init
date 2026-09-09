@@ -58,8 +58,12 @@ class ReleaseIntegrationTests(unittest.TestCase):
             command("git", "-C", str(source), "-c", "user.name=PH fixture",
                     "-c", "user.email=fixture@example.com", "commit", "-qm", "fixture release")
             command("git", "-C", str(source), "tag", f"v{CURRENT}")
-            prepared = ph_release.prepare_release("latest", transport=LocalTransport(source),
-                                                   parent=workspace / "prepared")
+            prepared = ph_release.prepare_release(
+                "latest",
+                transport=LocalTransport(source),
+                parent=workspace / "prepared",
+                offer_support=False,
+            )
             root = prepared.root
             for mode in ("portable", "symlink"):
                 with self.subTest(mode=mode):

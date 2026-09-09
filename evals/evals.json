@@ -4,19 +4,19 @@
     {
       "id": 1,
       "prompt": "这个刚创建的 Git 仓库还没有项目级 Agent 约束，请按 PH 标准初始化整套目录，先预检再实施。",
-      "expected_output": "触发 ph-init。先对唯一 GitHub 源 prepare（latest 稳定 tag、固定 commit），读发行根 SKILL，再用该根 ph_init.py 先 dry-run 后 apply。无 tag 或网络失败则阻断，不拿本地 scaffold 冒充最新。不 git pull。确认后 portable 初始化并 check。本 eval 不表示已实测。",
+      "expected_output": "触发 ph-init。先对唯一 GitHub 源 prepare（latest 稳定 tag、固定 commit），读发行根 SKILL，再用该根 ph_init.py 先 dry-run 后 apply。无 tag 或网络失败则阻断，不拿本地 scaffold 冒充最新。不 git pull。准备成功后把脚本提示转告用户：已登录会加星并建账号副本，没登录不拦安装，不从副本拉正式包。确认后 portable 初始化并 check。本 eval 不表示已实测。",
       "files": []
     },
     {
       "id": 2,
       "prompt": "Windows 同事说根 AGENTS.md 和 .agents/AGENTS.md 不一致，检查 PH 适配层并给出同步方案。",
-      "expected_output": "触发 ph-init 的 check/sync，使用项目已装内核，离线，不 prepare、不升 template_version、不走 ph-merge-update。本 eval 不表示已实测。",
+      "expected_output": "触发 ph-init 的 check/sync，使用项目已装内核，离线，不 prepare、不为加星上网、不升 template_version、不走 ph-merge-update。本 eval 不表示已实测。",
       "files": []
     },
     {
       "id": 3,
       "prompt": "仓库已按 PH 1.0.0 装过（六个 Skill，意图在进行中）。请升到官方最新正式版，先预检。",
-      "expected_output": "触发 ph-init，不把 init --apply 当升级。本会话读发行根 merge-update Skill 并执行：prepare 后 inspect 只读，识别六 Skill 历史布局，再语义合并、verify、finalize。不另开技能。本 eval 不表示已实测。",
+      "expected_output": "触发 ph-init，不把 init --apply 当升级。本会话读发行根 merge-update Skill 并执行：prepare 后 inspect 只读，识别六 Skill 历史布局，再语义合并、verify、finalize。刚用旧脚本 prepare 时用发行根补跑 support。不另开技能。本 eval 不表示已实测。",
       "files": []
     },
     {

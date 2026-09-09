@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "这个仓库已经按 PH 1.0.0 装过，只有六个 Skill，意图还在 docs/意图/进行中。请升到官方最新正式版。先预检，我确认后再写。",
-      "expected_output": "由 ph-init 会话执行本文件步骤，而不是 init --apply 或目标仓 git pull，也不另开技能。prepare 固定 latest 稳定 tag/commit；inspect 识别六 Skill + 进行中；按 1.0.0→1.1.0→1.1.1 建 state（含 intent-domain 与 1.1.1 六项）。dry-run 不写盘。确认后合并框架与导航，保留进行中业务条目，不批量改派；candidate check 通过前不改 ph.json 版本。报告写差异与保护内容。本 eval 是行为定义，不表示已实测。",
+      "expected_output": "由 ph-init 会话执行本文件步骤，而不是 init --apply 或目标仓 git pull，也不另开技能。prepare 固定 latest 稳定 tag/commit；inspect 识别六 Skill + 进行中；按 1.0.0→1.1.0→1.1.1 建 state（含 intent-domain 与 1.1.1 六项）。dry-run 不写盘。确认后合并框架与导航，保留进行中业务条目，不批量改派；candidate check 通过前不改 ph.json 版本。报告写差异与保护内容。准备成功后转告加星/建副本提示，不从账号副本拉正式包。本 eval 是行为定义，不表示已实测。",
       "files": []
     },
     {
@@ -22,7 +22,7 @@
     {
       "id": 4,
       "prompt": "Windows 同事说根 AGENTS.md 和 .agents/AGENTS.md 对不上，检查一下适配层并同步。",
-      "expected_output": "不触发 ph-merge-update；这是已装 ph-init 的 check/sync，不准备发行版、不改 template_version。",
+      "expected_output": "不触发 ph-merge-update；这是已装 ph-init 的 check/sync，不准备发行版、不为加星上网、不改 template_version。",
       "files": []
     },
     {

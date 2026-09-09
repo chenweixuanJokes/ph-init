@@ -1,163 +1,85 @@
 # ph-init
 
-PH（Project Harness）的正式分发入口。唯一源：
+ph-init 为 Git 项目安装一套供 AI 编码助手使用的开发规范、技能和文档目录。初始化时，助手会读取项目代码和已有资料，整理 Wiki、开发规范和测试要求。配套技能还可以记录需求、归档项目经验、管理隔离工作区。
 
-`https://github.com/chenweixuanJokes/ph-init.git`
+如果你已经在用 `AGENTS.md` 交代编码规则，PH（Project Harness）可以在这份规则之外，补上架构说明、需求记录和经验归档。资料保存在仓库里，团队可以一起维护，后续会话也有据可查。已有文档可以合并整理，不必从模板重写。
 
-本批版本为 **1.1.6**（Schema **1.1.1**，十个必需 Skill）。`latest` 取数值最大的稳定 tag，排除预发布与非版本标签，并固定到该 tag 的 commit。尚无稳定 tag 或查询失败时，初始化必须停止，不能把 `main`、工作区或眼前这份本地 `assets/scaffold` 当成最新正式版。
+[开始使用](#开始使用) · [更新记录](./CHANGELOG.md) · [正式版本](https://github.com/chenweixuanJokes/ph-init/releases)
 
-本仓库是安装、升级与初始化文档材料。用户只说「初始化 PH」「安装 harness」「升级 PH」都走 `ph-init`。Python 的 `init` / `check` / `sync` 只做确定性的安装、检查与适配层同步；`ph-init` Skill 在安装后的同一会话中通过 subagent 补齐项目文档。存量项目接入不先落模板盖旧正文：会话在仓外生成 `sources` 快照与合并候选，经 `init --adopt-plan` 受控安装。已接入且版本旧于发行根时，同一会话按 merge-update 步骤升级，不要 `init --apply` 覆盖定制，不要另开技能，不要在目标仓库 `git pull`。
+## 项目中会增加什么
 
-Schema 与发布版本独立维护。1.1.1 引入十 Skill 契约；本批保留该 Schema，不新增必需 Skill。
+项目规则保存在 `.agents/AGENTS.md`，根目录的 `AGENTS.md`、`CLAUDE.md` 是供编码工具读取的入口，由 PH 生成和同步。文档按用途分开：
 
-## 它安装什么
+```text
+docs/
+├── 约束规范/       # 编码规则、测试要求、架构决策
+├── 意图/           # 功能需求、问题及实施记录
+└── 项目Wiki/       # 项目结构、领域知识、使用说明
 
-- `.agents/` 唯一规范源：`AGENTS.md`、`ph.json` + `ph.schema.json`
-- 十个 `ph-*` Skill：
-  - `ph-init`：用户入口；自装后常驻，提供 check / sync，已装旧版由该会话按升级步骤做完
-  - `ph-merge-update`：已安装项目按迁移链合并升级的步骤（由 ph-init 会话执行）
-  - `ph-worktree-enter` / `ph-worktree-exit`
-  - `ph-memory-capture` / `ph-memory-archive` / `ph-memory-ask`
-  - `ph-intent-new` / `ph-intent-impl` / `ph-intent-drop`
-- `docs/` 三域与 `.agents/memory/` 三层
-- portable（默认）或 symlink 适配层，规则与安全边界同发行根 `SKILL.md`
-
-意图目录现行为 `待办/` 与 `实施/`；不设 `已完成/`，交付的意图留在 `实施/` 并在记录注明结果。旧 `进行中/` 状态取消，存量条目按是否已启动迁入待办或实施。细则在项目文档，不在本 README 展开生命周期。
-
-## 存量项目文档补全
-
-初始化会话先盘点代码、实际依赖版本、CI、已有规范与测试，再按独立范围派发 subagent：补齐项目 Wiki，以及工程／前端／后端／测试规范。目标技术栈的官方资料在实际 init 时实时查阅，保留来源、版本与访问日期；本分发仓不预装特定业务栈规则。
-
-详见随包安装的[初始化与文档补全](./assets/scaffold/docs/约束规范/工程规范/初始化与文档补全.md)，其中包含项目级 harness 内容清单的逐项落点；新增[安全与配置](./assets/scaffold/docs/约束规范/工程规范/安全与配置.md)、[构建发布与运维](./assets/scaffold/docs/约束规范/工程规范/构建发布与运维.md)，并细化各端、用例和 Wiki 模板。
-
-- 存量内容用旧内容接入：会话盘点七类证据（模块、代码、配置、真实依赖、测试、CI、旧约束）后在**目标仓外**生成合并候选 plan，`init --adopt-plan` 校验 `sources` 哈希一致才落盘；已有正文优先复用 / 引用登记，不复制第二套。
-- `--adopt-plan` 仅用于尚无 `.agents/ph.json` 的目标；已安装仓库拒绝 adopt。已装旧版由 ph-init 会话按 merge-update 步骤做完升级，不另开技能。已安装同版重跑 init 保留定制 canonical。
-- 接入前的旧文档目录（如 `docs/specs/`、`docs/domains/`、`docs/plans/`）按内容归并进 `约束规范/`、`意图/`、`项目Wiki/`，不留旧目录、空壳或软链；摘要 + 深链指向归并后的正文，被引用旧规范保持效力。写入或移走前把原文备份到 `.agents/archived/`。内核 adopt 不自动搬移或删除。
-- 已有安全普通 `docs/**` 文件由安装内核保留，缺失才安装；会话按段落补缺并维护索引，不整树覆盖。
-- 区分已接受规则、当前事实、待采纳建议和待核实项；不编造负责人、历史决策、意图、记忆或测试通过记录。
-- 补全过程记录在 `.agents/init-report.md` 覆盖报告：矩阵每个独立 id 一行（落点、仓内证据、结果、说明），结果只用已核验 / 复用 / 不适用 / 待核实 / 冲突。
-- 安装 check 通过不等于文档补全完成。网络或子任务失败要单独记录，文档可按磁盘实态与 `init-report` 续做，不重跑 init。
-- 升级只引入本次迁移要求的指引，保护既有正文和 subagent 产物；完整文档重建不属于普通 merge-update。
-
-## 根安装入口（clone 后准备正式版）
-
-先有 Git 仓库。空目录先 `git init`。不要用 ZCode `/init` 或其它厂商脚手架。
-
-```bash
-git clone https://github.com/chenweixuanJokes/ph-init.git /tmp/ph-init
-python3 /tmp/ph-init/scripts/ph_release.py prepare --version latest --repo /path/to/target-repo
+.agents/
+├── AGENTS.md       # 项目约束正文
+├── skills/         # PH 技能
+├── memory/         # 项目经验与历史参考
+└── archived/       # 整理文档前保存的原文
 ```
 
-stdout 为 JSON：`root` `version` `tag` `commit` `source`。材料在目标仓库外。然后**读取该 `root` 里最新的 `SKILL.md`**，并用该 root 的内核：
+这里的「意图」指准备在项目中做的改动。功能和问题可以先记为待办，开始开发后进入实施，完成时留下验收结果；放弃的事项也保留原因。
 
-```bash
-python3 <root>/scripts/ph_init.py init --repo /path/to/target-repo
-python3 <root>/scripts/ph_init.py init --apply --repo /path/to/target-repo
-```
+PH 附带十个技能，覆盖安装与维护、需求记录与实施、记忆的记录与查询，以及隔离工作区的进入和退出。项目记忆用于参考，不能替代当前规则和代码。
 
-dry-run 与 apply 必须是同一次 prepare 的 `version`/`commit`。预检可下载，不得改目标。无正式 tag、网络失败、tag/commit/`release.json` 不一致：停止。
+## 已有项目怎么处理
 
-装成用户级入口后，在项目里说“初始化 PH”也应先 prepare，再执行发行根，而不是直接跑 clone 目录里可能过期的 `ph_init.py init`。
+初始化会先检查代码、依赖、配置、测试和现有文档，再给出整理方案。比如项目使用什么框架、测试从哪里运行，要从仓库中核实；没有前端的项目，不会被要求填写一套前端技术栈。
+
+已有正文优先保留或引用。需要合并、移动的文档会先备份原文，再调整目录和链接。内容有冲突时由你确认，不会直接套用模板。
+
+文件写入后，助手会继续补文档，并说明哪些内容已经核实、哪些仍缺资料。安装检查只检查 PH 文件和入口，文档是否完整要单独看；未完成的部分可以继续整理，无需重装。
+
+## 开始使用
+
+需要 Git、Python 3 和支持 Skills 的 AI 编码工具。下面将入口安装到用户级技能目录，请先确认你的工具会读取该目录：
 
 ```bash
 git clone https://github.com/chenweixuanJokes/ph-init.git ~/.agents/skills/ph-init
 ```
 
-用户级目录只是入口，仍以 prepare 给出的 `root` 为准。
+目录已存在时不要覆盖，使用已有入口即可。打开自己的项目，在 AI 对话中输入：
 
-## 旧 shadow 入口
+> 初始化 PH，先检查现有代码和文档，列出要改哪些文件，确认后再安装。
 
-旧副本（例如仍停在 1.1.0 九 Skill 的 `~/.agents/skills/ph-init`，或项目内自包含旧包）**不是**最新正式版。初始化或升级时：
+助手会下载最新正式版，检查项目，并等待你确认写入范围。目标项目需要是 Git 仓库，空目录可以先执行 `git init`。不要在 ph-init 分发仓库本身执行初始化。
 
-1. 用入口中的 `ph_release.py` 对目标 `prepare`。旧 1.1.0 入口没有此脚本时，先将固定 GitHub 源 clone 到新的仓外目录，从新 clone 运行 prepare，不覆盖旧项目入口。
-2. 只读 JSON 的 `root`。
-3. 读 `<root>/SKILL.md`。已装旧版则同一会话再读 `<root>/assets/scaffold/.agents/skills/ph-merge-update/SKILL.md`，不要求旧项目已经有该 Skill，也不另开技能。
-4. 未安装执行 `<root>/scripts/ph_init.py`；已装旧版执行 `<root>/scripts/ph_merge_update.py`。
-5. 不要继续用 shadow 目录的 `assets/scaffold` 当最新模板，不要对目标 `git pull`。
+不同客户端的技能发现方式有差异，未识别时请检查客户端配置。Windows、网络盘和各客户端的兼容情况尚未全部验证。
 
-本地检查 / 同步用项目已装内核，无需网络：
+## 日常使用
 
-```bash
-python3 <installed-ph-init>/scripts/ph_init.py check --repo /path/to/target-repo
-python3 <installed-ph-init>/scripts/ph_init.py sync --repo /path/to/target-repo
-```
+安装以后，可以直接在项目中描述任务，例如：
 
-离线内核只能保证它携带的那一版能 check/sync，不能证明那一版是当前 `latest`。
+> 把导出报表的需求记下来，先不写代码。
 
-## 已安装项目升级
+> 把这次排查的结论记到项目记忆里。
 
-对外入口仍是 `ph-init`。已装且版本旧于发行根时，同一会话按发行根 `ph-merge-update` 步骤做完，不要另开技能，不要 `init --apply`。摘要：
+> 继续补上次没写完的项目 Wiki。
 
-```bash
-python3 <root>/scripts/ph_release.py prepare --version latest --repo /path/to/target-repo
-python3 <root>/scripts/ph_merge_update.py inspect --repo /path/to/target-repo
-# Agent 按 migrations/ 合并；inspect 只读
-python3 <root>/scripts/ph_merge_update.py verify --repo /path/to/target-repo
-python3 <root>/scripts/ph_merge_update.py finalize --repo /path/to/target-repo          # dry-run
-python3 <root>/scripts/ph_merge_update.py finalize --apply --repo /path/to/target-repo
-```
+检查、同步和升级仍使用 `ph-init` 入口：
 
-进度在项目 `.agents/updates/<to_version>/state.json` 与 `report.md`。candidate check 通过前不改磁盘 `ph.json` 版本。旧 `进行中/` 存量条目按是否已启动迁入待办或实施。冲突停止受影响项。不自动 commit / push / 公开仓库。
+> 检查 PH，先不要改文件。
 
-历史六 Skill、两套 1.1.0 命名、已提前落地的待办/实施，都必须按文件实态识别。迁移说明：[migrations/README.md](./migrations/README.md)。
+> 升级 PH，保留项目自己的规则和文档，先给我看差异。
 
-## 命令
+普通检查和同步使用项目已安装的版本，不下载更新。升级会比较新旧内容，保留项目定制；与现有规则冲突的部分需要确认。
 
-```bash
-python3 scripts/ph_release.py prepare --version latest|1.1.6 --repo <git-root>
-python3 scripts/ph_init.py init  [--apply] [--adopt-plan <plan.json>] [--mode portable|symlink] [--repo <git-root>]
-python3 scripts/ph_init.py check [--mode portable|symlink] [--repo <git-root>]
-python3 scripts/ph_init.py sync  [--apply] [--mode portable|symlink] [--repo <git-root>]
-python3 scripts/ph_merge_update.py inspect --repo <git-root>
-python3 scripts/ph_merge_update.py verify --repo <git-root>
-python3 scripts/ph_merge_update.py finalize [--apply] --repo <git-root>
-```
+## 下载与 GitHub 账号
 
-初始化请对 **prepare 的 root** 调 `ph_init.py`。上面写 `scripts/` 时，指当前正在执行的那份发行根，不是任意 shadow 路径。
+安装和升级从 [官方仓库](https://github.com/chenweixuanJokes/ph-init) 下载正式版本。开发分支不作为最新版；下载或校验失败时会停止。
 
-## 安全
+**从 1.1.7 起，下载成功后会尝试使用本机已登录的 GitHub 账号，给官方仓库加星，并在该账号下创建仓库副本。** 已有副本会复用，操作结果会告知你。没有登录或操作失败，都不影响安装；以后升级仍从官方仓库下载。
 
-- 不加 `--apply` 不写目标
-- 非 docs 冲突 fail-closed；已有安全普通 docs 保留待会话审阅，不安全路径仍阻断
-- `--adopt-plan` 的候选只允许 canonical `.agents/AGENTS.md` 与 `docs/**`；plan 在仓外生成，不写秘密 / 令牌；已装仓库拒绝 adopt
-- 拒绝嵌套 symlink / junction、仓外路径、hardlink 充当软链、受跟踪的 `.worktrees/`
-- 不 push、不删分支、不改 `core.symlinks`、不对目标 `git pull`
+可下载的版本以 [Releases](https://github.com/chenweixuanJokes/ph-init/releases) 为准。
 
-## 发布与校验
+## 文档
 
-面向用户的版本摘要：[CHANGELOG.md](./CHANGELOG.md)。发布元数据：`release.json`。
-
-修改发行内容或准备发布前，必须遵循本仓 [版本与合并升级约束](./docs/约束规范/工程规范/版本与合并升级.md)：每个对外小改动批次递增 `1.1.x`，同时提交相邻版本的合并升级方案；缺任一项不得发布。此规则由 `.agents/AGENTS.md` 引用，区别于下游 scaffold 约束。
-
-本独立仓库用 Git 标签发布。作者侧旧 monorepo 的 `scripts/build_scaffold.py` 与 `scripts/build_project_template.py` **不是**安装或发布源；不要在本仓为了“出包”去跑它们，也不要把仓外实施模板布局当成前置条件。
-
-发布检查与回归（在本仓库根）：
-
-```bash
-python3 scripts/check_release.py
-python3 -m unittest discover -s tests -v
-```
-
-CI 只检查，不自动打 tag、不改仓库可见性。`evals/` 是触发与行为定义，**不宣称这些场景已实测**。
-
-## 已知限制
-
-- 首个正式标签为 `v1.1.1`；若发布源尚无稳定标签或网络不可达，`prepare --version latest` 会阻断，不回退到开发分支。
-- 本机验证面与跨客户端限制见发行说明；Windows / 网络盘 / 各厂商 Skill 触发未作为开箱保证。
-- 测试应使用临时 Git 仓，结束后移入 `~/trash/`。
-
-## 仓库结构
-
-```text
-ph-init/
-├── README.md
-├── SKILL.md
-├── CHANGELOG.md
-├── release.json
-├── migrations/         # 相邻版本说明与 index.json
-├── scripts/            # ph_release / ph_init / ph_merge_update；build_* 非发布源
-├── assets/scaffold/    # 脚手架（含另外九个 Skill，不含嵌套 ph-init）
-├── tests/
-├── evals/
-└── docs/               # 分发仓维护文档（不进发行树）
-```
+- [初始化与文档整理](./assets/scaffold/docs/约束规范/工程规范/初始化与文档补全.md)
+- [版本升级说明](./migrations/README.md)
+- [技能与命令参考](./SKILL.md)
+- [贡献者：维护与发布要求](./docs/约束规范/工程规范/版本与合并升级.md)

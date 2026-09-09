@@ -51,3 +51,4 @@
 | [1.1.3 → 1.1.4](./1.1.3-to-1.1.4.md) | 存量约束合并接入与全量文档取证 | `adopt-plan-init` `adopt-existing-content` `init-report-coverage` |
 | [1.1.4 → 1.1.5](./1.1.4-to-1.1.5.md) | 已装旧版由 ph-init 会话做完升级 | `init-unified-entry` |
 | [1.1.5 → 1.1.6](./1.1.5-to-1.1.6.md) | 对用户提问改成日常用语，内部字段名仍留在代理侧 | `plain-user-questions` |
+| [1.1.6 → 1.1.7](./1.1.6-to-1.1.7.md) | 准备成功后已登录则加星并建账号副本，不改下载源 | `prepare-star-fork` |

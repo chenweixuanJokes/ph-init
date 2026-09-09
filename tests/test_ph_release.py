@@ -11,7 +11,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+import urllib.error
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -204,9 +205,16 @@ class PhReleaseTests(unittest.TestCase):
             tags.update(extra_tags)
         return DictTransport(tags=tags, trees={commit: tree}, blobs=blobs), commit
 
-    def prepare(self, transport, version="latest", repo=None):
+    def prepare(self, transport, version="latest", repo=None, support=None, offer_support=False):
         parent = self.temp_dir("ph-release-work-")
-        return ph_release.prepare_release(version, repo=repo, transport=transport, parent=parent)
+        return ph_release.prepare_release(
+            version,
+            repo=repo,
+            transport=transport,
+            parent=parent,
+            support=support,
+            offer_support=offer_support,
+        )
 
     def test_parse_ls_remote_prefers_peeled_annotated_commit(self):
         tag_obj = self.commit_id("tag-object")
@@ -447,6 +455,7 @@ class PhReleaseTests(unittest.TestCase):
                 repo=str(target),
                 transport=transport,
                 parent=target / "nested-download",
+                offer_support=False,
             )
 
     def test_safe_rel_path_allows_unicode_and_rejects_escape(self):
@@ -463,6 +472,7 @@ class PhReleaseTests(unittest.TestCase):
         parent = self.temp_dir("ph-release-cli-")
         original_ctor = ph_release.GitTransport
         original_alloc = ph_release.allocate_temp_root
+        original_support = ph_release.offer_official_support
 
         class Patched(DictTransport):
             def __init__(self):
@@ -474,6 +484,7 @@ class PhReleaseTests(unittest.TestCase):
 
         ph_release.GitTransport = Patched
         ph_release.allocate_temp_root = lambda target: parent
+        ph_release.offer_official_support = lambda *a, **k: None
         buf = io.StringIO()
         try:
             with redirect_stdout(buf):
@@ -481,6 +492,7 @@ class PhReleaseTests(unittest.TestCase):
         finally:
             ph_release.GitTransport = original_ctor
             ph_release.allocate_temp_root = original_alloc
+            ph_release.offer_official_support = original_support
         self.assertEqual(code, 0)
         data = json.loads(buf.getvalue())
         self.assertEqual(data["version"], "1.1.1")
@@ -678,6 +690,148 @@ class PhReleaseTests(unittest.TestCase):
         self.assertNotIn("credential", str(ctx.exception).lower())
         self.assertNotIn("token=", str(ctx.exception))
 
+    def test_support_message_uses_everyday_words(self):
+        signed_in = ph_release.SupportResult(
+            "alice",
+            True,
+            True,
+            "https://github.com/alice/ph-init",
+            True,
+            True,
+        )
+        already = ph_release.SupportResult(
+            "alice",
+            True,
+            False,
+            "https://github.com/alice/ph-init",
+            False,
+            True,
+        )
+        skipped = ph_release.SupportResult(None, False, False, None, False, False)
+        created = signed_in.message(after_download=True)
+        reused = already.message(after_download=True)
+        unsigned = skipped.message(after_download=True)
+        follow_up = skipped.message(after_download=False)
+        self.assertIn("已经从官方地址下载好了", created)
+        self.assertIn("alice", created)
+        self.assertIn("https://github.com/alice/ph-init", created)
+        self.assertIn("仍从官方地址进行", created)
+        self.assertIn("星已经点过", reused)
+        self.assertIn("副本已经在这个地址", reused)
+        self.assertIn("没有已登录的 GitHub", unsigned)
+        self.assertIn(ph_release.OFFICIAL_PAGE, unsigned)
+        self.assertIn("官方地址不用再下一次", follow_up)
+        for text in (created, reused, unsigned, follow_up):
+            lowered = text.lower()
+            self.assertNotIn("fork", lowered)
+            self.assertNotIn("token", lowered)
+            self.assertNotIn("api", lowered)
+            self.assertNotIn("github_token", lowered)
+            self.assertNotIn("courtesy", lowered)
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_prepare_skips_support_when_not_signed_in(self):
+        files = self.release_files()
+        transport, commit = self.transport_for(files)
+        session = RecordingSupport()
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            prepared = self.prepare(transport, "latest", support=session, offer_support=True)
+        self.assertEqual(prepared.commit, commit)
+        self.assertEqual(session.calls, ["login"])
+        self.assertIn("没有已登录的 GitHub", stderr.getvalue())
+        self.assertEqual(
+            json.loads((prepared.root / ".ph-source.json").read_text(encoding="utf-8"))["source"],
+            FIXED_SOURCE,
+        )
+        self.assertNotIn("root", json.loads((prepared.root / ".ph-source.json").read_text(encoding="utf-8")))
+
+    def test_prepare_records_existing_star_and_copy(self):
+        files = self.release_files()
+        transport, _ = self.transport_for(files)
+        session = RecordingSupport(login="bob", star_created=False, copy_created=False)
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            prepared = self.prepare(transport, "latest", support=session, offer_support=True)
+        self.assertEqual(session.calls, ["login", ("star", "bob"), ("copy", "bob")])
+        self.assertIn("星已经点过", stderr.getvalue())
+        self.assertIn("https://github.com/bob/ph-init", stderr.getvalue())
+        self.assertEqual(set(prepared.as_dict()), {"version", "tag", "commit", "source", "root"})
+
+    def test_prepare_survives_support_failure(self):
+        files = self.release_files()
+        transport, commit = self.transport_for(files)
+        session = RecordingSupport(login="carol", error="star")
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            prepared = self.prepare(transport, "latest", support=session, offer_support=True)
+        self.assertEqual(prepared.commit, commit)
+        self.assertIn("安装不受影响", stderr.getvalue())
+        self.assertEqual(prepared.source, FIXED_SOURCE)
+
+    def test_failed_download_does_not_offer_support(self):
+        transport = DictTransport(ls_error=ph_release.PHReleaseError("network failure talking to source"))
+        session = RecordingSupport(login="dave")
+        with self.assertRaises(ph_release.PHReleaseError):
+            self.prepare(transport, "latest", support=session, offer_support=True)
+        self.assertEqual(session.calls, [])
+
+    def test_cli_support_does_not_download(self):
+        original = ph_release.GithubSession
+        ph_release.GithubSession = RecordingSupport
+        stderr = io.StringIO()
+        try:
+            with redirect_stderr(stderr):
+                code = ph_release.main(["support"])
+        finally:
+            ph_release.GithubSession = original
+        self.assertEqual(code, 0)
+        self.assertIn("官方地址不用再下一次", stderr.getvalue())
+
+    def test_github_request_redacts_token_from_errors(self):
+        def fake_urlopen(request, timeout=None):
+            self.assertIn("Bearer secret-token", request.get_header("Authorization"))
+            raise urllib.error.HTTPError(
+                request.full_url,
+                401,
+                "unauthorized",
+                hdrs=None,
+                fp=io.BytesIO(b'{"message":"bad token=secret-token"}'),
+            )
+
+        original = ph_release.urllib.request.urlopen
+        ph_release.urllib.request.urlopen = fake_urlopen
+        try:
+            with self.assertRaises(ph_release.SupportActionError) as ctx:
+                ph_release._github_request("GET", "/user", "secret-token")
+        finally:
+            ph_release.urllib.request.urlopen = original
+        self.assertNotIn("secret-token", str(ctx.exception))
+        self.assertEqual(ctx.exception.status, 401)
+
+
+class RecordingSupport(ph_release.GithubSession):
+    def __init__(self, login=None, star_created=True, copy_url=None, copy_created=True, error=None):
+        self.login = login
+        self.star_created = star_created
+        self.copy_url = copy_url or (f"https://github.com/{login}/ph-init" if login else None)
+        self.copy_created = copy_created
+        self.error = error
+        self.calls = []
+
+    def current_login(self):
+        self.calls.append("login")
+        if self.error == "login":
+            raise ph_release.SupportActionError("login failed")
+        return self.login
+
+    def ensure_star(self, login):
+        self.calls.append(("star", login))
+        if self.error == "star":
+            raise ph_release.SupportActionError("star failed", status=403)
+        return self.star_created
+
+    def ensure_copy(self, login):
+        self.calls.append(("copy", login))
+        if self.error == "copy":
+            raise ph_release.SupportActionError("copy failed")
+        return self.copy_url, self.copy_created

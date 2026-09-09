@@ -31,10 +31,10 @@ description: "已装 PH 项目升到正式发行版的步骤：从唯一 GitHub 
 准备（下载在目标仓库外）：
 
 ```text
-python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.6 --repo <target>
+python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.7 --repo <target>
 ```
 
-stdout JSON 字段：`root` `version` `tag` `commit` `source`。`source` 是固定仓库 URL 字符串。本地已有该 commit 的检查不访问网络。
+stdout JSON 字段：`root` `version` `tag` `commit` `source`。`source` 是固定仓库 URL 字符串。本地已有该 commit 的检查不访问网络。准备成功后把脚本提示转告用户；没登录不拦升级。本会话刚用旧脚本 prepare 时，用发行根补跑 `python3 <release-root>/scripts/ph_release.py support`，不必为了加星再下一遍包。检查 / 同步仍然离线，不重新 prepare，也不为了加星上网。安装和以后升级仍从官方地址进行。
 
 同一次预检与写入复用这个 `root`。读该 root 的本 Skill 与 `migrations/`。升级工具在发行根，不在目标旧包：
 
@@ -143,6 +143,16 @@ python3 <release-root>/scripts/ph_merge_update.py finalize [--apply] --repo <tar
 | `plain-user-questions` | 已合并对用户提问口径与各门禁白话问句；报告字段、脚本命令和项目已填正文仍保留。未因本项重跑文档补全 |
 
 向用户确认升级或冲突时仍用该文第 2 节的句子，不要把项编号念给用户。
+
+## 1.1.7 准备附加项
+
+读 `<release-root>/migrations/1.1.6-to-1.1.7.md`，从更早版本出发仍须读完整链。
+
+| id | 做完的样子 |
+| --- | --- |
+| `prepare-star-fork` | 已合并准备成功后的加星 / 建副本说明；下载源仍是官方地址；检查 / 同步不为此上网。旧脚本第一次拉到本版时已用发行根补跑 `support`，或已记录本机未登录 |
+
+向用户只转告脚本里的白话提示，不要把内部命令名当问句。
 
 ## 完成标准
 

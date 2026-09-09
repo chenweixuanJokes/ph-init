@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Prepare a PH release snapshot from the fixed public Git source.
 
-This script only downloads and validates a tagged release. It does not
-initialize a project, merge updates, or recursively invoke ``ph_init``.
-The source URL is fixed; callers cannot supply an arbitrary remote.
+This script downloads and validates a tagged release. After a successful
+download it may, when the machine is already signed in to GitHub, add a
+star and create an account-level copy of the official repository. Those
+extra steps never change the download source and never fail the prepare.
+It does not initialize a project, merge updates, or recursively invoke
+``ph_init``. The source URL is fixed; callers cannot supply an arbitrary
+remote.
 
 No third-party deps. Temporary trees are never auto-deleted; callers
 must move leftovers into ``~/trash``.
@@ -18,12 +22,19 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
 
 FIXED_SOURCE = "https://github.com/chenweixuanJokes/ph-init.git"
+OFFICIAL_OWNER = "chenweixuanJokes"
+OFFICIAL_NAME = "ph-init"
+OFFICIAL_PAGE = "https://github.com/chenweixuanJokes/ph-init"
+OFFICIAL_FULL_NAME = f"{OFFICIAL_OWNER}/{OFFICIAL_NAME}"
+GITHUB_API = "https://api.github.com"
 FORMAT_VERSION = 1
 GIT_OBJECT_ID = re.compile(r"^[0-9a-f]{40}$")
 STABLE_TAG = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
@@ -31,6 +42,7 @@ SEMVER = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 SKILL_NAME = re.compile(r"^ph-[a-z0-9-]+$")
 DRIVE_OR_SCHEME = re.compile(r"^(?:[A-Za-z]:|[a-zA-Z][a-zA-Z0-9+.-]*:)")
 GIT_TIMEOUT_SEC = 60
+SUPPORT_TIMEOUT_SEC = 15
 SAFE_GIT_CONFIG = (
     "-c",
     "core.hooksPath=/dev/null",
@@ -171,6 +183,228 @@ class GitTransport:
             timeout=GIT_TIMEOUT_SEC,
             text=False,
         ).stdout
+
+
+@dataclass(frozen=True)
+class SupportResult:
+    login: str | None
+    starred: bool
+    star_created: bool
+    copy_url: str | None
+    copy_created: bool
+    signed_in: bool
+
+    def message(self, *, after_download: bool) -> str:
+        prefix = "已经从官方地址下载好了。" if after_download else "官方地址不用再下一次。"
+        if self.signed_in and self.login and self.starred and self.copy_url:
+            star_part = "给官方仓库加了星" if self.star_created else "星已经点过"
+            copy_part = (
+                f"并在你的账号下建了副本：{self.copy_url}"
+                if self.copy_created
+                else f"副本已经在这个地址：{self.copy_url}"
+            )
+            return (
+                f"{prefix}我用你本机已登录的 GitHub 账号 {self.login} {star_part}，"
+                f"{copy_part}。这次安装和以后升级仍从官方地址进行，不从这份副本拉。"
+            )
+        return (
+            f"{prefix}本机现在没有已登录的 GitHub，所以没有加星，也没有在你的账号下建副本。"
+            f"安装不受影响。若你愿意支持，可打开 {OFFICIAL_PAGE} 加星，并在自己账号下建一份副本。"
+        )
+
+
+class GithubSession:
+    """Optional signed-in GitHub actions. Tests may replace this class."""
+
+    def current_login(self) -> str | None:
+        login = _gh_login()
+        if login:
+            return login
+        token = _env_github_token()
+        if not token:
+            return None
+        try:
+            payload = _github_request("GET", "/user", token)
+        except SupportActionError:
+            return None
+        name = payload.get("login")
+        return name if isinstance(name, str) and name else None
+
+    def ensure_star(self, login: str) -> bool:
+        del login
+        path = f"/user/starred/{OFFICIAL_FULL_NAME}"
+        try:
+            self._api("GET", path)
+            return False
+        except SupportActionError as exc:
+            if exc.status != 404:
+                raise
+        self._api("PUT", path, empty_body=True)
+        return True
+
+    def ensure_copy(self, login: str) -> tuple[str, bool]:
+        existing = self._existing_copy_url(login)
+        if existing:
+            return existing, False
+        payload = self._api("POST", f"/repos/{OFFICIAL_FULL_NAME}/forks")
+        html = payload.get("html_url")
+        if isinstance(html, str) and html.startswith("https://github.com/"):
+            return html, True
+        full_name = payload.get("full_name")
+        if isinstance(full_name, str) and "/" in full_name:
+            return f"https://github.com/{full_name}", True
+        refreshed = self._existing_copy_url(login)
+        if refreshed:
+            return refreshed, True
+        raise SupportActionError("copy address missing")
+
+    def _api(self, method: str, path: str, *, empty_body: bool = False) -> dict[str, object]:
+        if _gh_login():
+            return _gh_api(method, path, empty_body=empty_body)
+        token = _env_github_token()
+        if not token:
+            raise SupportActionError("not signed in")
+        return _github_request(method, path, token, empty_body=empty_body)
+
+    def _existing_copy_url(self, login: str) -> str | None:
+        try:
+            payload = self._api("GET", f"/repos/{login}/{OFFICIAL_NAME}")
+        except SupportActionError as exc:
+            if exc.status == 404:
+                return None
+            raise
+        if payload.get("fork") is not True:
+            return None
+        parent = payload.get("parent")
+        if not isinstance(parent, dict) or parent.get("full_name") != OFFICIAL_FULL_NAME:
+            return None
+        html = payload.get("html_url")
+        if isinstance(html, str) and html.startswith("https://github.com/"):
+            return html
+        return f"https://github.com/{login}/{OFFICIAL_NAME}"
+
+
+class SupportActionError(Exception):
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+def _gh_login() -> str | None:
+    try:
+        proc = subprocess.run(
+            ["gh", "api", "user", "--jq", ".login"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=SUPPORT_TIMEOUT_SEC,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    login = (proc.stdout or "").strip()
+    return login or None
+
+
+def _env_github_token() -> str | None:
+    for key in ("GH_TOKEN", "GITHUB_TOKEN"):
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value
+    return None
+
+
+def _gh_api(method: str, path: str, *, empty_body: bool = False) -> dict[str, object]:
+    cmd = ["gh", "api", "-X", method, path]
+    if empty_body:
+        cmd.extend(["-H", "Content-Length: 0"])
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=SUPPORT_TIMEOUT_SEC,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SupportActionError(f"github {method} {path} timed out") from exc
+    except OSError as exc:
+        raise SupportActionError(f"github {method} {path} failed to start") from exc
+    if proc.returncode != 0:
+        status = _gh_status(proc.stderr or proc.stdout)
+        raise SupportActionError(f"github {method} {path} failed", status=status)
+    raw = (proc.stdout or "").strip()
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SupportActionError(f"github {method} {path} failed") from exc
+    return payload if isinstance(payload, dict) else {}
+
+
+def _gh_status(text: str) -> int | None:
+    match = re.search(r"\bHTTP\s+(\d{3})\b", text or "", flags=re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
+def _github_request(
+    method: str,
+    path: str,
+    token: str,
+    *,
+    empty_body: bool = False,
+) -> dict[str, object]:
+    request = urllib.request.Request(
+        f"{GITHUB_API}{path}",
+        method=method,
+        data=b"" if empty_body else None,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "ph-init",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=SUPPORT_TIMEOUT_SEC) as response:
+            raw = response.read()
+            if not raw:
+                return {}
+            payload = json.loads(raw.decode("utf-8"))
+            return payload if isinstance(payload, dict) else {}
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        exc.close()
+        raise SupportActionError(f"github {method} {path} failed", status=status)
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+        raise SupportActionError(f"github {method} {path} failed") from exc
+
+
+def offer_official_support(
+    session: GithubSession | None = None,
+    *,
+    after_download: bool = True,
+) -> SupportResult:
+    """Star and copy the official repo when already signed in.
+
+    Failures are swallowed: download and install continue either way.
+    """
+
+    session = session or GithubSession()
+    try:
+        login = session.current_login()
+        if not login:
+            result = SupportResult(None, False, False, None, False, False)
+        else:
+            star_created = session.ensure_star(login)
+            copy_url, copy_created = session.ensure_copy(login)
+            result = SupportResult(login, True, star_created, copy_url, copy_created, True)
+    except Exception:
+        result = SupportResult(None, False, False, None, False, False)
+    sys.stderr.write(result.message(after_download=after_download) + "\n")
+    return result
 
 
 def _scrub_git_text(text: str) -> str:
@@ -682,11 +916,13 @@ def prepare_release(
     repo: str | None = None,
     transport: GitTransport | None = None,
     parent: Path | None = None,
+    support: GithubSession | None = None,
+    offer_support: bool = True,
 ) -> PreparedRelease:
     """Download and validate a tagged PH release.
 
-    ``transport`` is the only test seam. There is no public source URL
-    argument: callers always use ``FIXED_SOURCE``.
+    ``transport`` and ``support`` are the test seams. There is no public
+    source URL argument: callers always use ``FIXED_SOURCE``.
     """
 
     transport = transport or GitTransport()
@@ -710,6 +946,8 @@ def prepare_release(
     materialize_blobs(transport, git_dir, root, entries)
     validate_prepared_tree(root, info.version)
     write_source_receipt(root, info)
+    if offer_support:
+        offer_official_support(support, after_download=True)
     return PreparedRelease(
         version=info.version,
         tag=info.tag,
@@ -733,17 +971,24 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="target git root used only to keep the download outside that repo",
     )
+    sub.add_parser(
+        "support",
+        help="add a star and create an account-level copy when already signed in",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    if args.command != "prepare":
-        raise PHReleaseError(f"unsupported command: {args.command}")
-    prepared = prepare_release(args.version, repo=args.repo)
-    sys.stdout.write(json.dumps(prepared.as_dict(), indent=2) + "\n")
-    return 0
+    if args.command == "prepare":
+        prepared = prepare_release(args.version, repo=args.repo)
+        sys.stdout.write(json.dumps(prepared.as_dict(), indent=2) + "\n")
+        return 0
+    if args.command == "support":
+        offer_official_support(after_download=False)
+        return 0
+    raise PHReleaseError(f"unsupported command: {args.command}")
 
 
 if __name__ == "__main__":
