@@ -36,6 +36,12 @@ OFFICIAL_PAGE = "https://github.com/chenweixuanJokes/ph-init"
 OFFICIAL_FULL_NAME = f"{OFFICIAL_OWNER}/{OFFICIAL_NAME}"
 GITHUB_API = "https://api.github.com"
 FORMAT_VERSION = 1
+# Releases at or after this version publish no independent schema_version:
+# release.json and the manifest must not carry the field, and the schema $id
+# is fixed without a version suffix. Older tags keep the legacy shape.
+NO_SCHEMA_VERSION_AT = (1, 1, 8)
+SCHEMA_ID = "urn:ph:schema:project-harness"
+SCHEMA_ID_PREFIX = f"{SCHEMA_ID}:"
 GIT_OBJECT_ID = re.compile(r"^[0-9a-f]{40}$")
 STABLE_TAG = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 SEMVER = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
@@ -685,7 +691,9 @@ def _require_file(root: Path, rel: str, label: str) -> Path:
     return path
 
 
-def validate_release_meta(data: dict, expected_version: str) -> tuple[list[str], str]:
+def validate_release_meta(data: dict, expected_version: str) -> list[str]:
+    """Validate current release metadata and return the required skills."""
+
     format_version = _need(data, "format_version", "")
     if not isinstance(format_version, int) or isinstance(format_version, bool):
         raise PHReleaseError("illegal release.json: format_version must be an integer")
@@ -696,38 +704,37 @@ def validate_release_meta(data: dict, expected_version: str) -> tuple[list[str],
         raise PHReleaseError("illegal release.json: version is not semver")
     _const(version, expected_version, "version")
 
-    schema_version = _need(data, "schema_version", "")
-    if not isinstance(schema_version, str) or not SEMVER.fullmatch(schema_version):
-        raise PHReleaseError("illegal release.json: schema_version is not semver")
-
     repository = _need(data, "repository", "")
     if not isinstance(repository, str):
         raise PHReleaseError("illegal release.json: repository must be a string")
     _const(repository, FIXED_SOURCE, "repository")
 
-    extra = set(data) - {"format_version", "version", "schema_version", "repository", "required_skills"}
+    extra = set(data) - {"format_version", "version", "repository", "required_skills"}
     if extra:
         raise PHReleaseError(
             f"illegal release.json: unsupported metadata keys {sorted(extra)}"
         )
 
-    skills = _skill_names(_need(data, "required_skills", ""), "release.json")
-    return skills, schema_version
+    return _skill_names(_need(data, "required_skills", ""), "release.json")
 
 
-def validate_manifest(
+def _validate_legacy_release_meta(
+    data: dict,
+    expected_version: str,
+) -> tuple[list[str], str]:
+    schema_version = _need(data, "schema_version", "")
+    if not isinstance(schema_version, str) or not SEMVER.fullmatch(schema_version):
+        raise PHReleaseError("illegal release.json: schema_version is not semver")
+    metadata = dict(data)
+    del metadata["schema_version"]
+    return validate_release_meta(metadata, expected_version), schema_version
+
+
+def _validate_manifest_versions(
     data: dict,
     expected_version: str,
     skills: list[str],
-    schema_version: str,
 ) -> None:
-    found_schema = data.get("schema_version")
-    if not isinstance(found_schema, str) or not SEMVER.fullmatch(found_schema):
-        raise PHReleaseError("illegal manifest: schema_version is not semver")
-    if found_schema != schema_version:
-        raise PHReleaseError(
-            f"illegal manifest: schema_version must be {schema_version!r}, got {found_schema!r}"
-        )
     template_version = data.get("template_version")
     if not isinstance(template_version, str) or not SEMVER.fullmatch(template_version):
         raise PHReleaseError("illegal manifest: template_version is not semver")
@@ -743,9 +750,49 @@ def validate_manifest(
         raise PHReleaseError("illegal manifest: skills.required_names mismatch")
 
 
-def validate_schema(data: dict, schema_version: str) -> None:
+def validate_manifest(
+    data: dict,
+    expected_version: str,
+    skills: list[str],
+) -> None:
+    if "schema_version" in data:
+        raise PHReleaseError(
+            "illegal manifest: schema_version was removed; delete the field"
+        )
+    _validate_manifest_versions(data, expected_version, skills)
+
+
+def _validate_legacy_manifest(
+    data: dict,
+    expected_version: str,
+    skills: list[str],
+    schema_version: str,
+) -> None:
+    found_schema = data.get("schema_version")
+    if not isinstance(found_schema, str) or not SEMVER.fullmatch(found_schema):
+        raise PHReleaseError("illegal manifest: schema_version is not semver")
+    if found_schema != schema_version:
+        raise PHReleaseError(
+            f"illegal manifest: schema_version must be {schema_version!r}, got {found_schema!r}"
+        )
+    _validate_manifest_versions(data, expected_version, skills)
+
+
+def validate_schema(data: dict) -> None:
     schema_id = data.get("$id")
-    expected = f"urn:ph:schema:project-harness:{schema_version}"
+    if schema_id != SCHEMA_ID:
+        raise PHReleaseError(f"illegal schema: $id must be {SCHEMA_ID!r}, got {schema_id!r}")
+    required = data.get("required")
+    if isinstance(required, list) and "schema_version" in required:
+        raise PHReleaseError("illegal schema: required must not list schema_version")
+    properties = data.get("properties")
+    if isinstance(properties, dict) and "schema_version" in properties:
+        raise PHReleaseError("illegal schema: properties must not define schema_version")
+
+
+def _validate_legacy_schema(data: dict, schema_version: str) -> None:
+    schema_id = data.get("$id")
+    expected = f"{SCHEMA_ID_PREFIX}{schema_version}"
     if schema_id != expected:
         raise PHReleaseError(f"illegal schema: $id must be {expected!r}, got {schema_id!r}")
 
@@ -815,11 +862,8 @@ def validate_migrations_index(data: dict, root: Path) -> None:
             seen_items.add(entry)
 
 
-def validate_prepared_tree(root: Path, expected_version: str) -> None:
-    release = read_json_object(root / "release.json", "release.json")
-    skills, schema_version = validate_release_meta(release, expected_version)
+def _require_tree_files(root: Path, skills: list[str]) -> None:
     _require_file(root, "SKILL.md", "required skill file")
-
     for rel in REQUIRED_SCRIPTS:
         _require_file(root, rel, "required script")
     for rel in REQUIRED_SCAFFOLD:
@@ -829,10 +873,23 @@ def validate_prepared_tree(root: Path, expected_version: str) -> None:
             continue
         _require_file(root, f"assets/scaffold/.agents/skills/{name}/SKILL.md", "required skill file")
 
+
+def validate_prepared_tree(root: Path, expected_version: str) -> None:
+    legacy = _parse_semver(expected_version) < NO_SCHEMA_VERSION_AT
+    release = read_json_object(root / "release.json", "release.json")
+    if legacy:
+        skills, schema_version = _validate_legacy_release_meta(release, expected_version)
+    else:
+        skills = validate_release_meta(release, expected_version)
+    _require_tree_files(root, skills)
     manifest = read_json_object(root / "assets/scaffold/.agents/ph.json", "manifest")
-    validate_manifest(manifest, expected_version, skills, schema_version)
     schema = read_json_object(root / "assets/scaffold/.agents/ph.schema.json", "schema")
-    validate_schema(schema, schema_version)
+    if legacy:
+        _validate_legacy_manifest(manifest, expected_version, skills, schema_version)
+        _validate_legacy_schema(schema, schema_version)
+    else:
+        validate_manifest(manifest, expected_version, skills)
+        validate_schema(schema)
     migrations = read_json_object(root / MIGRATIONS_INDEX, "migrations/index.json")
     validate_migrations_index(migrations, root)
 

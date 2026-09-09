@@ -27,6 +27,9 @@ import ph_release  # noqa: E402
 
 TRASH_ROOT = Path.home() / "trash"
 FIXED_SOURCE = ph_release.FIXED_SOURCE
+SCHEMA_ID = ph_release.SCHEMA_ID
+CURRENT_VERSION = "1.1.8"
+LEGACY_VERSION = "1.1.7"
 DEFAULT_SKILLS = [
     "ph-init",
     "ph-worktree-enter",
@@ -148,22 +151,21 @@ class PhReleaseTests(unittest.TestCase):
     def commit_id(self, seed: str) -> str:
         return hashlib.sha1(seed.encode()).hexdigest()
 
-    def release_files(self, version="1.1.1", *, schema_version=None, skills=None, extra=None, mutate=None):
-        schema_version = schema_version or version
+    def release_files(self, version=CURRENT_VERSION, *, skills=None, extra=None, mutate=None):
+        """Current release shape (1.1.8+): no schema_version anywhere."""
+
         skills = list(skills or DEFAULT_SKILLS)
         release = {
             "format_version": 1,
             "version": version,
-            "schema_version": schema_version,
             "repository": FIXED_SOURCE,
             "required_skills": skills,
         }
         manifest = {
-            "schema_version": schema_version,
             "template_version": version,
             "skills": {"required_names": skills},
         }
-        schema = {"$id": f"urn:ph:schema:project-harness:{schema_version}"}
+        schema = {"$id": SCHEMA_ID}
         files = {
             "release.json": json.dumps(release, indent=2) + "\n",
             "SKILL.md": "# ph-init\n",
@@ -187,6 +189,23 @@ class PhReleaseTests(unittest.TestCase):
             mutate(files)
         return files
 
+    def legacy_release_files(self, version=LEGACY_VERSION, *, schema_version="1.1.1", skills=None, extra=None, mutate=None):
+        """Pre-1.1.8 release shape: schema_version must agree in three places."""
+
+        files = self.release_files(version, skills=skills, extra=extra)
+        release = json.loads(files["release.json"])
+        release["schema_version"] = schema_version
+        files["release.json"] = json.dumps(release, indent=2) + "\n"
+        manifest = json.loads(files["assets/scaffold/.agents/ph.json"])
+        manifest["schema_version"] = schema_version
+        files["assets/scaffold/.agents/ph.json"] = json.dumps(manifest, indent=2) + "\n"
+        schema = json.loads(files["assets/scaffold/.agents/ph.schema.json"])
+        schema["$id"] = f"urn:ph:schema:project-harness:{schema_version}"
+        files["assets/scaffold/.agents/ph.schema.json"] = json.dumps(schema, indent=2) + "\n"
+        if mutate:
+            mutate(files)
+        return files
+
     def tree_from_files(self, files):
         blobs = {}
         records = []
@@ -197,7 +216,7 @@ class PhReleaseTests(unittest.TestCase):
             records.append(f"100644 blob {object_id}\t{path}")
         return "\0".join(records) + "\0", blobs
 
-    def transport_for(self, files, version="1.1.1", extra_tags=None):
+    def transport_for(self, files, version=CURRENT_VERSION, extra_tags=None):
         commit = self.commit_id(f"v{version}")
         tree, blobs = self.tree_from_files(files)
         tags = {f"v{version}": commit}
@@ -258,17 +277,19 @@ class PhReleaseTests(unittest.TestCase):
         files = self.release_files()
         transport, commit = self.transport_for(files)
         prepared = self.prepare(transport, "latest")
-        self.assertEqual(prepared.version, "1.1.1")
-        self.assertEqual(prepared.tag, "v1.1.1")
+        self.assertEqual(prepared.version, CURRENT_VERSION)
+        self.assertEqual(prepared.tag, f"v{CURRENT_VERSION}")
         self.assertEqual(prepared.commit, commit)
         self.assertEqual(prepared.source, FIXED_SOURCE)
         self.assertTrue(prepared.root.is_dir())
+        meta = json.loads((prepared.root / "release.json").read_text(encoding="utf-8"))
+        self.assertNotIn("schema_version", meta)
         receipt = json.loads((prepared.root / ".ph-source.json").read_text(encoding="utf-8"))
         self.assertEqual(
             receipt,
             {
-                "version": "1.1.1",
-                "tag": "v1.1.1",
+                "version": CURRENT_VERSION,
+                "tag": f"v{CURRENT_VERSION}",
                 "commit": commit,
                 "source": FIXED_SOURCE,
             },
@@ -281,25 +302,126 @@ class PhReleaseTests(unittest.TestCase):
         self.assertEqual(transport.fetch_calls[0][:2], (FIXED_SOURCE, commit))
 
     def test_explicit_version_uses_matching_tag(self):
-        files_old = self.release_files("1.1.0")
-        files_new = self.release_files("1.1.1")
-        old_commit = self.commit_id("v1.1.0")
-        new_commit = self.commit_id("v1.1.1")
+        files_old = self.legacy_release_files(LEGACY_VERSION)
+        files_new = self.release_files(CURRENT_VERSION)
+        old_commit = self.commit_id(f"v{LEGACY_VERSION}")
+        new_commit = self.commit_id(f"v{CURRENT_VERSION}")
         old_tree, old_blobs = self.tree_from_files(files_old)
         new_tree, new_blobs = self.tree_from_files(files_new)
         blobs = {**old_blobs, **new_blobs}
         transport = DictTransport(
-            tags={"v1.1.0": old_commit, "v1.1.1": new_commit},
+            tags={f"v{LEGACY_VERSION}": old_commit, f"v{CURRENT_VERSION}": new_commit},
             trees={old_commit: old_tree, new_commit: new_tree},
             blobs=blobs,
         )
-        prepared = self.prepare(transport, "1.1.0")
-        self.assertEqual(prepared.tag, "v1.1.0")
+        prepared = self.prepare(transport, LEGACY_VERSION)
+        self.assertEqual(prepared.tag, f"v{LEGACY_VERSION}")
         self.assertEqual(prepared.commit, old_commit)
         self.assertEqual(
             json.loads((prepared.root / "release.json").read_text(encoding="utf-8"))["version"],
-            "1.1.0",
+            LEGACY_VERSION,
         )
+        prepared = self.prepare(transport, CURRENT_VERSION)
+        self.assertEqual(prepared.tag, f"v{CURRENT_VERSION}")
+        self.assertEqual(prepared.commit, new_commit)
+
+    def test_explicit_legacy_version_downloads_old_format_as_published(self):
+        files = self.legacy_release_files(LEGACY_VERSION, schema_version="1.1.1")
+        transport, commit = self.transport_for(files, version=LEGACY_VERSION)
+        prepared = self.prepare(transport, LEGACY_VERSION)
+        self.assertEqual(prepared.version, LEGACY_VERSION)
+        meta = json.loads((prepared.root / "release.json").read_text(encoding="utf-8"))
+        manifest = json.loads((prepared.root / "assets/scaffold/.agents/ph.json").read_text(encoding="utf-8"))
+        schema = json.loads((prepared.root / "assets/scaffold/.agents/ph.schema.json").read_text(encoding="utf-8"))
+        self.assertEqual(meta["schema_version"], "1.1.1")
+        self.assertEqual(manifest["schema_version"], "1.1.1")
+        self.assertEqual(schema["$id"], "urn:ph:schema:project-harness:1.1.1")
+
+    def test_legacy_format_must_be_self_consistent(self):
+        def mismatch_manifest(files):
+            data = json.loads(files["assets/scaffold/.agents/ph.json"])
+            data["schema_version"] = "9.9.9"
+            files["assets/scaffold/.agents/ph.json"] = json.dumps(data)
+
+        transport, _ = self.transport_for(
+            self.legacy_release_files(LEGACY_VERSION, mutate=mismatch_manifest),
+            version=LEGACY_VERSION,
+        )
+        with self.assertRaises(ph_release.PHReleaseError):
+            self.prepare(transport, LEGACY_VERSION)
+
+        def mismatch_schema_id(files):
+            data = json.loads(files["assets/scaffold/.agents/ph.schema.json"])
+            data["$id"] = "urn:ph:schema:project-harness:1.1.2"
+            files["assets/scaffold/.agents/ph.schema.json"] = json.dumps(data)
+
+        transport, _ = self.transport_for(
+            self.legacy_release_files(LEGACY_VERSION, mutate=mismatch_schema_id),
+            version=LEGACY_VERSION,
+        )
+        with self.assertRaises(ph_release.PHReleaseError):
+            self.prepare(transport, LEGACY_VERSION)
+
+        def drop_schema_version(files):
+            data = json.loads(files["release.json"])
+            del data["schema_version"]
+            files["release.json"] = json.dumps(data)
+
+        transport, _ = self.transport_for(
+            self.legacy_release_files(LEGACY_VERSION, mutate=drop_schema_version),
+            version=LEGACY_VERSION,
+        )
+        with self.assertRaises(ph_release.PHReleaseError):
+            self.prepare(transport, LEGACY_VERSION)
+
+    def test_new_format_rejects_schema_version_residue(self):
+        def meta_residue(files):
+            data = json.loads(files["release.json"])
+            data["schema_version"] = "1.1.1"
+            files["release.json"] = json.dumps(data)
+
+        transport, _ = self.transport_for(self.release_files(mutate=meta_residue))
+        with self.assertRaises(ph_release.PHReleaseError):
+            self.prepare(transport, "latest")
+
+        def manifest_residue(files):
+            data = json.loads(files["assets/scaffold/.agents/ph.json"])
+            data["schema_version"] = "1.1.1"
+            files["assets/scaffold/.agents/ph.json"] = json.dumps(data)
+
+        transport, _ = self.transport_for(self.release_files(mutate=manifest_residue))
+        with self.assertRaises(ph_release.PHReleaseError):
+            self.prepare(transport, "latest")
+
+        def versioned_schema_id(files):
+            data = json.loads(files["assets/scaffold/.agents/ph.schema.json"])
+            data["$id"] = "urn:ph:schema:project-harness:1.1.1"
+            files["assets/scaffold/.agents/ph.schema.json"] = json.dumps(data)
+
+        transport, _ = self.transport_for(self.release_files(mutate=versioned_schema_id))
+        with self.assertRaises(ph_release.PHReleaseError):
+            self.prepare(transport, "latest")
+
+        def schema_still_declares_field(files):
+            data = json.loads(files["assets/scaffold/.agents/ph.schema.json"])
+            data["required"] = ["$schema", "schema_version"]
+            data["properties"] = {"schema_version": {"const": "1.1.1"}}
+            files["assets/scaffold/.agents/ph.schema.json"] = json.dumps(data)
+
+        transport, _ = self.transport_for(self.release_files(mutate=schema_still_declares_field))
+        with self.assertRaises(ph_release.PHReleaseError):
+            self.prepare(transport, "latest")
+
+    def test_new_format_rejects_wrong_schema_id(self):
+        def wrong_id(files):
+            data = json.loads(files["assets/scaffold/.agents/ph.schema.json"])
+            data["$id"] = "urn:ph:schema:other-harness"
+            files["assets/scaffold/.agents/ph.schema.json"] = json.dumps(data)
+
+        transport, _ = self.transport_for(self.release_files(mutate=wrong_id))
+        with self.assertRaises(ph_release.PHReleaseError) as ctx:
+            self.prepare(transport, "latest")
+        self.assertIn("$id", str(ctx.exception))
 
     def test_rejects_symlink_and_submodule_and_escaped_path(self):
         files = self.release_files()
@@ -314,7 +436,7 @@ class PhReleaseTests(unittest.TestCase):
         for tree in bad_trees:
             transport.trees[commit] = tree
             with self.assertRaises(ph_release.PHReleaseError):
-                self.prepare(transport, "1.1.1")
+                self.prepare(transport, CURRENT_VERSION)
 
     def test_rejects_mismatched_meta_and_missing_required_files(self):
         def mutate_repo(files):
@@ -324,7 +446,7 @@ class PhReleaseTests(unittest.TestCase):
 
         transport, _ = self.transport_for(self.release_files(mutate=mutate_repo))
         with self.assertRaises(ph_release.PHReleaseError):
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
 
         def mutate_format(files):
             data = json.loads(files["release.json"])
@@ -333,14 +455,14 @@ class PhReleaseTests(unittest.TestCase):
 
         transport, _ = self.transport_for(self.release_files(mutate=mutate_format))
         with self.assertRaises(ph_release.PHReleaseError):
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
 
         def drop_script(files):
             del files["scripts/ph_merge_update.py"]
 
         transport, _ = self.transport_for(self.release_files(mutate=drop_script))
         with self.assertRaises(ph_release.PHReleaseError):
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
 
         def bad_migration(files):
             data = json.loads(files["migrations/index.json"])
@@ -354,7 +476,7 @@ class PhReleaseTests(unittest.TestCase):
 
         transport, _ = self.transport_for(self.release_files(mutate=duplicate_from))
         with self.assertRaises(ph_release.PHReleaseError):
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
 
         def empty_items(files):
             data = json.loads(files["migrations/index.json"])
@@ -363,7 +485,7 @@ class PhReleaseTests(unittest.TestCase):
 
         transport, _ = self.transport_for(self.release_files(mutate=empty_items))
         with self.assertRaises(ph_release.PHReleaseError):
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
 
         def old_from_to_keys(files):
             data = json.loads(files["migrations/index.json"])
@@ -374,11 +496,11 @@ class PhReleaseTests(unittest.TestCase):
 
         transport, _ = self.transport_for(self.release_files(mutate=old_from_to_keys))
         with self.assertRaises(ph_release.PHReleaseError):
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
 
         transport, _ = self.transport_for(self.release_files(mutate=bad_migration))
         with self.assertRaises(ph_release.PHReleaseError):
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
 
         def mismatch_manifest(files):
             data = json.loads(files["assets/scaffold/.agents/ph.json"])
@@ -387,7 +509,7 @@ class PhReleaseTests(unittest.TestCase):
 
         transport, _ = self.transport_for(self.release_files(mutate=mismatch_manifest))
         with self.assertRaises(ph_release.PHReleaseError):
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
 
         def extra_meta(files):
             data = json.loads(files["release.json"])
@@ -396,7 +518,7 @@ class PhReleaseTests(unittest.TestCase):
 
         transport, _ = self.transport_for(self.release_files(mutate=extra_meta))
         with self.assertRaises(ph_release.PHReleaseError):
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
 
     def test_network_failure_does_not_fallback(self):
         transport = DictTransport(
@@ -417,7 +539,7 @@ class PhReleaseTests(unittest.TestCase):
             f"{FIXED_SOURCE} abc timed out after 60s"
         )
         with self.assertRaises(ph_release.PHReleaseError) as ctx:
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
         self.assertIn("timed out", str(ctx.exception))
 
     def test_prepare_does_not_mutate_target_repo(self):
@@ -495,8 +617,8 @@ class PhReleaseTests(unittest.TestCase):
             ph_release.offer_official_support = original_support
         self.assertEqual(code, 0)
         data = json.loads(buf.getvalue())
-        self.assertEqual(data["version"], "1.1.1")
-        self.assertEqual(data["tag"], "v1.1.1")
+        self.assertEqual(data["version"], CURRENT_VERSION)
+        self.assertEqual(data["tag"], f"v{CURRENT_VERSION}")
         self.assertEqual(data["commit"], commit)
         self.assertEqual(data["source"], FIXED_SOURCE)
         self.assertTrue(Path(data["root"]).is_dir())
@@ -524,12 +646,12 @@ class PhReleaseTests(unittest.TestCase):
             path.write_text(text, encoding="utf-8")
         for argv in (
             ["git", "add", "."],
-            ["git", "commit", "-m", "v1.1.1"],
-            ["git", "tag", "-a", "v1.1.1", "-m", "v1.1.1"],
+            ["git", "commit", "-m", f"v{CURRENT_VERSION}"],
+            ["git", "tag", "-a", f"v{CURRENT_VERSION}", "-m", f"v{CURRENT_VERSION}"],
         ):
             proc = run(argv, cwd=source)
             self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
-        commit = run(["git", "rev-parse", "v1.1.1^{}"], cwd=source).stdout.strip()
+        commit = run(["git", "rev-parse", f"v{CURRENT_VERSION}^{{}}"], cwd=source).stdout.strip()
         self.assertEqual(len(commit), 40)
 
         class LocalTransport(ph_release.GitTransport):
@@ -571,29 +693,29 @@ class PhReleaseTests(unittest.TestCase):
         self.assertEqual(prepared.commit, commit)
         self.assertEqual(
             json.loads((prepared.root / "release.json").read_text(encoding="utf-8"))["version"],
-            "1.1.1",
+            CURRENT_VERSION,
         )
         self.assertTrue((prepared.root / "scripts/ph_release.py").is_file())
         self.assertFalse((prepared.root / ".git").exists())
 
-    def test_schema_is_independent_of_release_version(self):
-        files = self.release_files("1.1.1", schema_version="1.2.0")
-        transport, _ = self.transport_for(files)
-        prepared = self.prepare(transport, "1.1.1")
+    def test_legacy_schema_version_is_independent_of_release_version(self):
+        files = self.legacy_release_files(LEGACY_VERSION, schema_version="1.1.1")
+        transport, _ = self.transport_for(files, version=LEGACY_VERSION)
+        prepared = self.prepare(transport, LEGACY_VERSION)
         meta = json.loads((prepared.root / "release.json").read_text(encoding="utf-8"))
         manifest = json.loads((prepared.root / "assets/scaffold/.agents/ph.json").read_text(encoding="utf-8"))
         schema = json.loads((prepared.root / "assets/scaffold/.agents/ph.schema.json").read_text(encoding="utf-8"))
-        self.assertEqual(meta["version"], "1.1.1")
-        self.assertEqual(meta["schema_version"], "1.2.0")
-        self.assertEqual(manifest["schema_version"], "1.2.0")
-        self.assertEqual(schema["$id"], "urn:ph:schema:project-harness:1.2.0")
+        self.assertEqual(meta["version"], LEGACY_VERSION)
+        self.assertEqual(meta["schema_version"], "1.1.1")
+        self.assertEqual(manifest["schema_version"], "1.1.1")
+        self.assertEqual(schema["$id"], "urn:ph:schema:project-harness:1.1.1")
 
-    def test_future_1_1_2_can_add_skill_and_prepare(self):
+    def test_future_1_1_9_can_add_skill_and_prepare(self):
         skills = [*DEFAULT_SKILLS, "ph-future-skill"]
-        files = self.release_files("1.1.2", schema_version="1.1.1", skills=skills)
-        transport, _ = self.transport_for(files, version="1.1.2")
-        prepared = self.prepare(transport, "1.1.2")
-        self.assertEqual(prepared.version, "1.1.2")
+        files = self.release_files("1.1.9", skills=skills)
+        transport, _ = self.transport_for(files, version="1.1.9")
+        prepared = self.prepare(transport, "1.1.9")
+        self.assertEqual(prepared.version, "1.1.9")
         self.assertTrue(
             (prepared.root / "assets/scaffold/.agents/skills/ph-future-skill/SKILL.md").is_file()
         )
@@ -622,11 +744,11 @@ class PhReleaseTests(unittest.TestCase):
         transport, commit = self.transport_for(files)
         transport.types[commit] = "tree"
         with self.assertRaises(ph_release.PHReleaseError) as ctx:
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
         self.assertIn("not commit", str(ctx.exception))
         transport.types[commit] = "blob"
         with self.assertRaises(ph_release.PHReleaseError):
-            self.prepare(transport, "1.1.1")
+            self.prepare(transport, CURRENT_VERSION)
 
     def test_run_git_strips_config_overrides_and_redacts_credential(self):
         captured = {}

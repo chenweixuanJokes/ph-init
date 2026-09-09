@@ -36,7 +36,6 @@ PH_GITIGNORE_BLOCK = (
 )
 RELEASE = json.loads((Path(__file__).resolve().parent.parent / "release.json").read_text(encoding="utf-8"))
 RELEASE_VERSION = RELEASE["version"]
-SCHEMA_VERSION = RELEASE["schema_version"]
 REQUIRED_SKILLS = tuple(RELEASE["required_skills"])
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 REL_PATH = re.compile(
@@ -324,7 +323,6 @@ def validate_manifest(data: dict) -> None:
 
     for key in (
         "$schema",
-        "schema_version",
         "template_version",
         "adapter_mode",
         "canonical",
@@ -335,11 +333,16 @@ def validate_manifest(data: dict) -> None:
     ):
         _need(data, key, "")
     _const(data["$schema"], "./ph.schema.json", "$schema")
-    for key, expected in (("schema_version", SCHEMA_VERSION), ("template_version", RELEASE_VERSION)):
-        value = data[key]
-        if not isinstance(value, str) or not SEMVER.fullmatch(value):
-            raise PHError(f"illegal manifest: {key} is not semver")
-        _const(value, expected, key)
+    if "schema_version" in data:
+        raise PHError(
+            "illegal manifest: schema_version was removed; the manifest carries only "
+            f"template_version (expected {RELEASE_VERSION!r}). Re-run ph-merge-update "
+            "to adopt the single-version manifest format."
+        )
+    value = data["template_version"]
+    if not isinstance(value, str) or not SEMVER.fullmatch(value):
+        raise PHError("illegal manifest: template_version is not semver")
+    _const(value, RELEASE_VERSION, "template_version")
     if data["adapter_mode"] not in MODES:
         raise PHError("illegal manifest: adapter_mode must be portable or symlink")
 
@@ -504,10 +507,14 @@ def load_repo_manifest(repo: Path, *, candidate: dict | None = None) -> dict:
     data = actual if candidate is None else candidate
     if candidate is not None:
         expected = dict(actual)
-        expected.update(schema_version=SCHEMA_VERSION, template_version=RELEASE_VERSION)
+        expected.pop("schema_version", None)
+        expected["template_version"] = RELEASE_VERSION
         expected["skills"] = dict(actual.get("skills", {}), required_names=list(REQUIRED_SKILLS))
         if candidate != expected:
-            raise PHError("candidate may change only release/schema versions and required skills")
+            raise PHError(
+                "candidate may change only template_version and required skills, "
+                "and may only delete the removed schema_version field"
+            )
     validate_manifest(data)
     ensure_canonical_layout(repo)
     return data

@@ -82,16 +82,16 @@ def git_blob_id(data: bytes) -> str:
     return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
 
 
-def release_contract() -> tuple[str, str, tuple[str, ...]]:
+def release_contract() -> tuple[str, tuple[str, ...]]:
     data = read_json(SOURCE_ROOT / "release.json")
-    version, schema, skills = ph_init.RELEASE_VERSION, ph_init.SCHEMA_VERSION, tuple(ph_init.REQUIRED_SKILLS)
-    if data.get("version") != version or data.get("schema_version") != schema:
+    version, skills = ph_init.RELEASE_VERSION, tuple(ph_init.REQUIRED_SKILLS)
+    if data.get("version") != version:
         raise PHError("release.json does not match ph_init contract")
     if list(data.get("required_skills") or []) != list(skills):
         raise PHError("release.json required_skills do not match ph_init contract")
-    if not SEMVER.match(version) or not SEMVER.match(schema):
-        raise PHError("illegal release contract versions")
-    return version, schema, skills
+    if not SEMVER.match(version):
+        raise PHError("illegal release contract version")
+    return version, skills
 
 
 def is_hardlink(path: Path) -> bool:
@@ -479,7 +479,7 @@ def resolve_from_version(disk_version: str, to_version: str, existing: dict | No
 
 
 def inspect_payload(repo: Path) -> dict:
-    to_version, _schema, _skills = release_contract()
+    to_version, _skills = release_contract()
     data = read_disk_manifest(repo)
     names = live_skills(repo)
     profile, conflicts = detect_profile(names)
@@ -554,13 +554,13 @@ def assert_target_schema(repo: Path) -> None:
         raise PHError("disk ph.schema.json does not match target schema")
 
 
-def assert_local_ph_init(repo: Path, version: str, schema: str, skills: tuple[str, ...]) -> None:
+def assert_local_ph_init(repo: Path, version: str, skills: tuple[str, ...]) -> None:
     root = repo / ".agents" / "skills" / "ph-init"
     assert_real_dir(repo, root, "canonical skill ph-init")
     release_path = root / "release.json"
     assert_real_file(repo, release_path, "installed ph-init release.json")
     data = read_json(release_path)
-    if data.get("version") != version or data.get("schema_version") != schema:
+    if data.get("version") != version:
         raise PHError("installed ph-init release metadata does not match target")
     if list(data.get("required_skills") or []) != list(skills):
         raise PHError("installed ph-init required_skills do not match target")
@@ -578,9 +578,10 @@ def raise_if_blocked(report, label: str) -> None:
     raise PHError(f"{label}: " + ("; ".join(details) or "blocked"))
 
 
-def build_candidate(data: dict, version: str, schema: str, skills: tuple[str, ...]) -> dict:
+def build_candidate(data: dict, version: str, skills: tuple[str, ...]) -> dict:
     cand = copy.deepcopy(data)
-    cand["schema_version"], cand["template_version"] = schema, version
+    cand.pop("schema_version", None)
+    cand["template_version"] = version
     skills_obj = cand.get("skills")
     if not isinstance(skills_obj, dict):
         raise PHError("illegal manifest: skills must be an object")
@@ -589,7 +590,7 @@ def build_candidate(data: dict, version: str, schema: str, skills: tuple[str, ..
 
 
 def verify_payload(repo: Path) -> dict:
-    to_version, schema, skills = release_contract()
+    to_version, skills = release_contract()
     src = source_status(to_version)
     data = read_disk_manifest(repo)
     profile, conflicts = detect_profile(live_skills(repo))
@@ -611,9 +612,9 @@ def verify_payload(repo: Path) -> dict:
         raise PHError("items are not applied/not_applicable with evidence: " + ", ".join(pending))
     check_target_layout(repo, skills)
     assert_target_schema(repo)
-    assert_local_ph_init(repo, to_version, schema, skills)
+    assert_local_ph_init(repo, to_version, skills)
     mode = repo_mode(repo, data)
-    candidate = build_candidate(data, to_version, schema, skills)
+    candidate = build_candidate(data, to_version, skills)
     load_repo_manifest(repo, candidate=candidate)
     raise_if_blocked(cmd_sync(repo, mode, False, candidate=candidate), "candidate sync plan")
     if not src["verified"]:
@@ -621,10 +622,10 @@ def verify_payload(repo: Path) -> dict:
     return {"action": "verify", "ok": True, "from": from_version, "to": to_version, "profile": profile, "status": state["status"], "mode": mode, "source": src}
 
 
-def write_versions(repo: Path, data: dict, version: str, schema: str, skills: tuple[str, ...]) -> None:
+def write_versions(repo: Path, data: dict, version: str, skills: tuple[str, ...]) -> None:
     path = repo / ".agents" / "ph.json"
     assert_real_file(repo, path, "canonical .agents/ph.json")
-    dump_json(path, build_candidate(data, version, schema, skills))
+    dump_json(path, build_candidate(data, version, skills))
 
 
 def mark_in_progress(repo: Path, to_version: str) -> None:
@@ -635,19 +636,19 @@ def mark_in_progress(repo: Path, to_version: str) -> None:
 
 
 def finalize_payload(repo: Path, apply: bool) -> dict:
-    to_version, schema, skills = release_contract()
+    to_version, skills = release_contract()
     src = source_status(to_version)
     if not src["can_finalize"]:
         raise PHError(src["reason"])
     verified = verify_payload(repo)
     data = read_disk_manifest(repo)
     mode = repo_mode(repo, data)
-    candidate = build_candidate(data, to_version, schema, skills)
+    candidate = build_candidate(data, to_version, skills)
     if not apply:
         return {"action": "finalize", "ok": True, "apply": False, "complete": False, "mode": mode, "from": verified["from"], "to": to_version}
     raise_if_blocked(cmd_sync(repo, mode, True, candidate=candidate), "candidate sync apply")
     raise_if_blocked(cmd_check(repo, mode, candidate=candidate), "candidate check")
-    write_versions(repo, read_disk_manifest(repo), to_version, schema, skills)
+    write_versions(repo, read_disk_manifest(repo), to_version, skills)
     regular = cmd_check(repo, mode)
     if regular.blocked:
         mark_in_progress(repo, to_version)

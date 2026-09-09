@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
@@ -11,6 +12,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT = json.loads((ROOT / "release.json").read_text())["version"]
@@ -46,6 +48,36 @@ class LocalTransport(ph_release.GitTransport):
 
 
 class ReleaseIntegrationTests(unittest.TestCase):
+    def test_current_downloader_prepares_published_legacy_tags(self):
+        workspace = Path(tempfile.mkdtemp(prefix="ph-legacy-download-"))
+        try:
+            for version in ("1.1.1", "1.1.7"):
+                with self.subTest(version=version):
+                    prepared = ph_release.prepare_release(
+                        version,
+                        transport=LocalTransport(ROOT),
+                        parent=workspace / version,
+                        offer_support=False,
+                    )
+                    expected = command("git", "rev-parse", f"v{version}^{{}}", cwd=ROOT).strip()
+                    self.assertEqual(prepared.commit, expected)
+                    release = json.loads((prepared.root / "release.json").read_text())
+                    manifest = json.loads((prepared.root / "assets/scaffold/.agents/ph.json").read_text())
+                    self.assertEqual(release["version"], version)
+                    self.assertEqual(manifest["template_version"], version)
+                    self.assertEqual(release["schema_version"], manifest["schema_version"])
+                    for rel in ("release.json", "assets/scaffold/.agents/ph.json",
+                                "assets/scaffold/.agents/ph.schema.json"):
+                        original = subprocess.run(
+                            ["git", "show", f"v{version}:{rel}"], cwd=ROOT,
+                            capture_output=True, check=True, timeout=90,
+                        ).stdout
+                        self.assertEqual((prepared.root / rel).read_bytes(), original)
+        finally:
+            trash = Path.home() / "trash"
+            trash.mkdir(parents=True, exist_ok=True)
+            workspace.rename(trash / f"ph-legacy-download-{os.getpid()}-{time.time_ns()}")
+
     def test_prepared_snapshot_init_and_post_merge_finalize(self):
         workspace = Path(tempfile.mkdtemp(prefix="ph-release-integration-"))
         try:
@@ -58,6 +90,27 @@ class ReleaseIntegrationTests(unittest.TestCase):
             command("git", "-C", str(source), "-c", "user.name=PH fixture",
                     "-c", "user.email=fixture@example.com", "commit", "-qm", "fixture release")
             command("git", "-C", str(source), "tag", f"v{CURRENT}")
+            for version in ("1.1.1", "1.1.7"):
+                with self.subTest(old_downloader=version):
+                    name = f"legacy_ph_release_{version.replace('.', '_')}"
+                    path = workspace / f"{name}.py"
+                    path.write_text(command("git", "show", f"v{version}:scripts/ph_release.py", cwd=ROOT))
+                    spec = importlib.util.spec_from_file_location(name, path)
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[name] = module
+                    try:
+                        spec.loader.exec_module(module)
+                        support = Mock(side_effect=AssertionError("unexpected GitHub support action"))
+                        module.offer_official_support = support
+                        with self.assertRaisesRegex(module.PHReleaseError, "missing schema_version"):
+                            module.prepare_release(
+                                CURRENT,
+                                transport=LocalTransport(source),
+                                parent=workspace / f"old-download-{version}",
+                            )
+                        support.assert_not_called()
+                    finally:
+                        sys.modules.pop(name, None)
             prepared = ph_release.prepare_release(
                 "latest",
                 transport=LocalTransport(source),
@@ -65,6 +118,8 @@ class ReleaseIntegrationTests(unittest.TestCase):
                 offer_support=False,
             )
             root = prepared.root
+            self.assertEqual(set(prepared.as_dict()), {"version", "tag", "commit", "source", "root"})
+            self.assertNotIn("schema_version", json.loads((root / "release.json").read_text()))
             for mode in ("portable", "symlink"):
                 with self.subTest(mode=mode):
                     repo = workspace / mode
@@ -81,6 +136,11 @@ class ReleaseIntegrationTests(unittest.TestCase):
                     # an Agent reconstructing old project rules from scratch.
                     manifest = repo / ".agents/ph.json"
                     data = json.loads(manifest.read_text())
+                    self.assertNotIn("schema_version", data)
+                    self.assertNotIn("schema_version", json.loads(
+                        (repo / ".agents/skills/ph-init/release.json").read_text()))
+                    self.assertEqual(json.loads((repo / ".agents/ph.schema.json").read_text())["$id"],
+                                     "urn:ph:schema:project-harness")
                     data["schema_version"] = data["template_version"] = "1.0.0"
                     data["skills"]["required_names"] = data["skills"]["required_names"][:6]
                     manifest.write_text(json.dumps(data) + "\n")
@@ -114,6 +174,9 @@ class ReleaseIntegrationTests(unittest.TestCase):
                     self.assertEqual(before, digest(repo))
                     command(sys.executable, str(merge), "finalize", "--apply", "--repo", str(repo))
                     self.assertEqual(retained, tuple(path.read_bytes() for path in retained_paths))
+                    finalized = json.loads(manifest.read_text())
+                    self.assertNotIn("schema_version", finalized)
+                    self.assertEqual(finalized["template_version"], CURRENT)
                     command(sys.executable, str(installed), "check", "--repo", str(repo))
                     result = json.loads(command(sys.executable, str(merge), "inspect", "--repo", str(repo)))
                     self.assertTrue(result["up_to_date"])

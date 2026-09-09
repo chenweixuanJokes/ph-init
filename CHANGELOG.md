@@ -2,9 +2,15 @@
 
 本仓库用户可见的正式版本摘要。相邻版本的适配步骤见 [migrations/README.md](./migrations/README.md)。
 
-Schema 与发布版本独立。`1.1.1` 批因版本锁与必需 Skill 清单变化，Schema 同为 `1.1.1`。以后只改 Skill 正文或文档时，不必自动升 Schema。
+从 `1.1.8` 起只有一个 PH 版本号，不再单独维护 Schema 版本（`1.1.7` 及更早的历史批曾以独立 Schema `1.1.1` 维护，见各版段落，最终态以本版为准）。
 
 尚未打过历史 tag。`1.0.0` 与两套 `1.1.0` 命名是可追溯提交，不是已发布 tag。首个正式 tag 是 `v1.1.1`，不追认 `v1.1.0`。
+
+## 1.1.8
+
+- 彻底取消独立 Schema 版本：发行包与项目清单不再携带 `schema_version` 字段，schema 标识固定为不带版本的 `urn:ph:schema:project-harness`，不另升编号。`template_version` 仍表示项目已完成升级的 PH 版本；`format_version` 等内部格式标识不变。
+- 旧版（1.1.7 及更早）安装入口在准备发行包时必查 `schema_version`，因此**必然拒绝 1.1.8 包**，也不会自动恢复。首次升级到本版需要一次性入口切换：把官方稳定标签 v1.1.8 克隆到一个新的仓外安全目录（不覆盖用户级入口与目标项目，不用开发分支冒充发行），用新目录运行 `ph_release.py prepare --version 1.1.8`，读取返回发行根的 SKILL 继续升级；v1.1.8 标签发布后适用。
+- 存量项目升级仍由 ph-init 会话按发行根 merge-update 步骤完成（inspect → 语义合并 → verify → finalize），不对已装项目 `init --apply`；旧 `schema_version` 字段仅在 finalize 验收通过后随 `template_version=1.1.8` 一起移除。业务正文、既有模式与未完成记录保留。迁移项：`single-ph-version`。
 
 ## 1.1.7
 

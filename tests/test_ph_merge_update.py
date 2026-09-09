@@ -28,7 +28,7 @@ import ph_merge_update  # noqa: E402
 TRASH_ROOT = Path.home() / "trash"
 FIXED_SOURCE = ph_merge_update.FIXED_SOURCE
 COMMIT = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-CURRENT, CURRENT_SCHEMA, TARGET_SKILLS_TUPLE = ph_merge_update.release_contract()
+CURRENT, TARGET_SKILLS_TUPLE = ph_merge_update.release_contract()
 TARGET_SKILLS = list(TARGET_SKILLS_TUPLE)
 BASE_SKILLS = list(ph_merge_update.BASE_SKILLS)
 OLD_ALIASES = list(ph_merge_update.OLD_ALIASES)
@@ -51,8 +51,11 @@ CHAIN_110 = [
     "init-unified-entry",
     "plain-user-questions",
     "prepare-star-fork",
+    "single-ph-version",
 ]
 CHAIN_100 = ["intent-domain", *CHAIN_110]
+CHAIN_111 = CHAIN_110[6:]  # everything after the 1.1.0 -> 1.1.1 hop
+CHAIN_117 = ["single-ph-version"]
 CHAIN_112 = [
     "init-docs-workflow",
     "docs-guidance",
@@ -120,7 +123,13 @@ class MergeUpdateTests(unittest.TestCase):
 
     def write_manifest(self, repo: Path, *, version="1.1.0", mode="portable", names=None, extra=None) -> dict:
         data = json.loads((SCAFFOLD / ".agents" / "ph.json").read_text(encoding="utf-8"))
-        data["schema_version"] = version
+        data.pop("schema_version", None)  # the scaffold template is the 1.1.8 single-version format
+        if ph_merge_update.semver_tuple(version) < (1, 1, 8):
+            # Pre-1.1.8 manifests carried the legacy field: it equaled
+            # template_version up to 1.1.1, then stayed pinned at 1.1.1.
+            data["schema_version"] = (
+                version if ph_merge_update.semver_tuple(version) < (1, 1, 2) else "1.1.1"
+            )
         data["template_version"] = version
         data["adapter_mode"] = mode
         if mode == "symlink":
@@ -282,7 +291,7 @@ class MergeUpdateTests(unittest.TestCase):
         self.assertEqual(ids, ["init-docs-workflow", "docs-guidance", "docs-project-preserve",
                                "adopt-plan-init", "adopt-existing-content", "init-report-coverage",
                                "init-unified-entry", "plain-user-questions",
-                               "prepare-star-fork"])
+                               "prepare-star-fork", "single-ph-version"])
         state = self.write_state(repo, from_version="1.1.2", items=ids)
         before_manifest = manifest_path.read_bytes()
         for status in ("pending", "blocked"):
@@ -319,6 +328,122 @@ class MergeUpdateTests(unittest.TestCase):
         self.seed_adapters(repo, mode, names)
         self.seed_gitignore(repo)
         return repo
+
+    def fixture_at_version(self, from_version: str, mode="portable"):
+        """A pre-1.1.8 install whose manifest still carries schema_version."""
+        repo = self.git_repo(f"ph-merge-v{from_version}-{mode}-")
+        names = BASE_SKILLS + NEW_INTENT + ["ph-merge-update"]
+        self.write_manifest(
+            repo,
+            mode=mode,
+            version=from_version,
+            names=names,
+            extra={"project_note": "keep-user-field"},
+        )
+        self.write_agents(repo)
+        self.seed_target_skills(repo)
+        self.write_intent_layout(repo, in_progress=True)
+        self.seed_adapters(repo, mode, names)
+        self.seed_gitignore(repo)
+        return repo
+
+    def test_upgrade_from_111_and_117_drops_schema_version(self):
+        self.install_receipt()
+        for from_version, chain_ids in (("1.1.1", CHAIN_111), ("1.1.7", CHAIN_117)):
+            with self.subTest(from_version=from_version):
+                repo = self.fixture_at_version(from_version)
+                manifest_path = repo / ".agents" / "ph.json"
+                old_bytes = manifest_path.read_bytes()
+                agents_bytes = (repo / ".agents" / "AGENTS.md").read_bytes()
+
+                inspected = ph_merge_update.inspect_payload(repo)
+                self.assertEqual(inspected["from"], from_version)
+                self.assertEqual(inspected["to"], CURRENT)
+                self.assertFalse(inspected["up_to_date"])
+                self.assertEqual(
+                    [i["id"] for i in inspected["suggested_state"]["items"]], chain_ids
+                )
+                self.assertEqual(manifest_path.read_bytes(), old_bytes, "inspect must stay read-only")
+
+                state = self.write_state(repo, from_version=from_version, items=chain_ids)
+                verified = ph_merge_update.verify_payload(repo)
+                self.assertTrue(verified["ok"])
+                self.assertEqual(verified["from"], from_version)
+                self.assertEqual(manifest_path.read_bytes(), old_bytes, "verify must stay read-only")
+                self.assertEqual((repo / ".agents" / "AGENTS.md").read_bytes(), agents_bytes)
+
+                old = json.loads(manifest_path.read_text(encoding="utf-8"))
+                self.assertEqual(old["schema_version"], "1.1.1")
+                cand = ph_merge_update.build_candidate(old, CURRENT, tuple(TARGET_SKILLS))
+                self.assertNotIn("schema_version", cand)
+                self.assertEqual(cand["template_version"], CURRENT)
+                self.assertEqual(cand["skills"]["required_names"], TARGET_SKILLS)
+                self.assertEqual(cand["project_note"], "keep-user-field")
+                self.assertEqual(cand["worktree"], old["worktree"])
+                self.assertEqual(cand["memory"], old["memory"])
+                ph_init.load_repo_manifest(repo, candidate=cand)
+
+                # dry-run finalize writes nothing
+                result = ph_merge_update.finalize_payload(repo, False)
+                self.assertFalse(result["apply"])
+                self.assertFalse(result["complete"])
+                self.assertEqual(manifest_path.read_bytes(), old_bytes)
+
+                # a pending migration item blocks apply and never falsely completes
+                state["items"][-1]["status"] = "pending"
+                self.write_json(self.update_dir(repo) / "state.json", state)
+                with self.assertRaises(ph_init.PHError):
+                    ph_merge_update.finalize_payload(repo, True)
+                self.assertEqual(manifest_path.read_bytes(), old_bytes)
+                self.assertEqual(
+                    json.loads((self.update_dir(repo) / "state.json").read_text())["status"],
+                    "in_progress",
+                )
+
+                state["items"][-1]["status"] = "applied"
+                self.write_json(self.update_dir(repo) / "state.json", state)
+                result = ph_merge_update.finalize_payload(repo, True)
+                self.assertTrue(result["complete"])
+                written = json.loads(manifest_path.read_text(encoding="utf-8"))
+                self.assertNotIn("schema_version", written)
+                self.assertEqual(written["template_version"], CURRENT)
+                self.assertEqual(written["project_note"], "keep-user-field")
+                self.assertEqual(written["skills"]["required_names"], TARGET_SKILLS)
+                self.assertEqual(written["worktree"], old["worktree"])
+                self.assertEqual(written["memory"], old["memory"])
+                self.assertIn("keep-me", (repo / ".agents" / "AGENTS.md").read_text(encoding="utf-8"))
+                self.assertEqual(
+                    json.loads((self.update_dir(repo) / "state.json").read_text())["status"],
+                    "complete",
+                )
+
+                # repeated finalize stays complete; the new manifest loads without a candidate
+                self.assertTrue(ph_merge_update.finalize_payload(repo, True)["complete"])
+                ph_init.load_repo_manifest(repo)
+                self.assertTrue(ph_merge_update.inspect_payload(repo)["up_to_date"])
+
+    def test_candidate_whitelist_only_allows_schema_version_removal(self):
+        repo = self.fixture_at_version("1.1.7")
+        with self.assertRaises(ph_init.PHError) as ctx:
+            ph_init.load_repo_manifest(repo)
+        self.assertIn("schema_version", str(ctx.exception))
+
+        data = json.loads((repo / ".agents" / "ph.json").read_text(encoding="utf-8"))
+        base = ph_merge_update.build_candidate(data, CURRENT, tuple(TARGET_SKILLS))
+        ph_init.load_repo_manifest(repo, candidate=base)  # exactly this deletion is allowed
+
+        def rejected(mutate, label):
+            bad = ph_merge_update.build_candidate(data, CURRENT, tuple(TARGET_SKILLS))
+            mutate(bad)
+            with self.assertRaises(ph_init.PHError, msg=label):
+                ph_init.load_repo_manifest(repo, candidate=bad)
+
+        rejected(lambda c: c.update(schema_version="1.1.1"), "candidate kept the removed field")
+        rejected(lambda c: c.update(adapter_mode="symlink"), "candidate edited adapter_mode")
+        rejected(lambda c: c.pop("worktree"), "candidate deleted another field")
+        rejected(lambda c: c.update(memory=dict(c["memory"], root=".elsewhere")), "candidate edited memory")
+        rejected(lambda c: c.update(extra_note="new-field"), "candidate added a field")
+
 
     def test_inspect_dev_tree_unverified_source(self):
         repo = self.git_repo("ph-merge-inspect-")
@@ -460,7 +585,7 @@ class MergeUpdateTests(unittest.TestCase):
         self.assertTrue(data["complete"])
         written = json.loads((repo / ".agents" / "ph.json").read_text(encoding="utf-8"))
         self.assertEqual(written["template_version"], CURRENT)
-        self.assertEqual(written["schema_version"], CURRENT_SCHEMA)
+        self.assertNotIn("schema_version", written)
         self.assertEqual(written["adapter_mode"], "portable")
         self.assertEqual(written["project_note"], "keep-user-field")
         self.assertEqual(written["skills"]["required_names"], TARGET_SKILLS)
@@ -543,12 +668,15 @@ class MergeUpdateTests(unittest.TestCase):
             "project_note": "keep",
             "skills": {"root": ".agents/skills", "required_names": BASE_SKILLS + NEW_INTENT},
         }
-        cand = ph_merge_update.build_candidate(data, CURRENT, CURRENT_SCHEMA, tuple(TARGET_SKILLS))
+        cand = ph_merge_update.build_candidate(data, CURRENT, tuple(TARGET_SKILLS))
         self.assertEqual(cand["project_note"], "keep")
         self.assertEqual(cand["adapter_mode"], "portable")
         self.assertEqual(cand["skills"]["required_names"], TARGET_SKILLS)
+        self.assertEqual(cand["template_version"], CURRENT)
+        self.assertNotIn("schema_version", cand)
         self.assertEqual(data["template_version"], "1.1.0")
         self.assertEqual(data["skills"]["required_names"], BASE_SKILLS + NEW_INTENT)
+        self.assertIn("schema_version", data)
 
     def test_inspect_uses_manifest_version_not_skill_guess(self):
         repo = self.git_repo("ph-merge-partial-")
@@ -568,7 +696,7 @@ class MergeUpdateTests(unittest.TestCase):
     def test_inspect_complete_target_is_up_to_date(self):
         repo = self.git_repo("ph-merge-current-")
         names = TARGET_SKILLS
-        self.write_manifest(repo, version=CURRENT, names=names, extra={"schema_version": CURRENT_SCHEMA})
+        self.write_manifest(repo, version=CURRENT, names=names)
         self.write_agents(repo)
         self.seed_target_skills(repo)
         self.write_intent_layout(repo)
@@ -596,7 +724,7 @@ class MergeUpdateTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("neither from", err)
 
-        self.write_manifest(repo, version=CURRENT, names=names, extra={"schema_version": CURRENT_SCHEMA})
+        self.write_manifest(repo, version=CURRENT, names=names)
         code, out, err = self.invoke("inspect", "--repo", str(repo))
         self.assertEqual(code, 0, err)
         data = self.load(out)
@@ -634,7 +762,7 @@ class MergeUpdateTests(unittest.TestCase):
 
         (repo / ".agents" / "ph.schema.json").write_bytes((SCAFFOLD / ".agents" / "ph.schema.json").read_bytes())
         (repo / ".agents" / "skills" / "ph-init" / "release.json").write_text(
-            json.dumps({"version": "9.9.9", "schema_version": "9.9.9", "required_skills": TARGET_SKILLS}) + "\n",
+            json.dumps({"version": "9.9.9", "required_skills": TARGET_SKILLS}) + "\n",
             encoding="utf-8",
         )
         code, _out, err = self.invoke("verify", "--repo", str(repo))

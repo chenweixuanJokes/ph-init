@@ -48,6 +48,18 @@
       "prompt": "继续 1.1.3 合并升级，新工程文已加过，原安全规范跟模板冲突，Wiki 还有占位。可以直接把版本标完成吗？",
       "expected_output": "先对照磁盘和state，不重复插入工程文。安全规范冲突项blocked，不能finalize；Wiki占位本身不阻止指导升级，但不得宣称文档补全完成。冲突解决与全量补全分开授权，保留原文件。本eval不表示已实测。",
       "files": []
+    },
+    {
+      "id": 9,
+      "prompt": "已装项目要升到 1.1.8，但用户级 ph-init 入口还是旧版，prepare 报 illegal release.json: missing schema_version。帮忙继续升级。",
+      "expected_output": "识别为旧入口必然拒绝新包的预期现象，不当作网络故障重试，不回退，不假称自动恢复。按一次性入口切换：向用户说明并确认后，把官方稳定标签 v1.1.8 clone 到新的仓外安全目录，不覆盖用户级入口与目标项目，不用 main 或本地开发树冒充；用新目录 prepare --version 1.1.8，之后 inspect → 语义合并 → verify → finalize 都用该发行根。不对已装项目 init --apply。finalize 通过后项目清单不再含 schema_version，template_version 写 1.1.8，schema $id 为无版本标识；业务正文与未完成记录保留。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 10,
+      "prompt": "升级完成后我检查 .agents/ph.json，里面没有 schema_version 字段了，这是不是升级出了问题？",
+      "expected_output": "不是问题：1.1.8 起彻底取消独立 Schema 版本，项目清单只有 template_version 一个版本字段，schema 标识固定为无版本的 urn:ph:schema:project-harness。用日常用语向用户解释，不动文件、不重跑升级；若项目内其他工具依赖旧字段才按冲突流程记录处理。本 eval 不表示已实测。",
+      "files": []
     }
   ]
 }

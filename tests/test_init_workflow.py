@@ -32,10 +32,23 @@ class SkillContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
 
-    def test_batch_version_bumped_with_unchanged_schema(self):
-        self.assertIn("1.1.7", self.skill)
-        self.assertNotIn("1.1.6", self.skill)
-        self.assertIn("1.1.1", self.skill)  # schema unchanged this batch
+    def test_batch_version_single_ph_version_contract(self):
+        self.assertIn("1.1.8", self.skill)
+        self.assertNotIn("1.1.7", self.skill)
+        self.assertNotIn("1.1.1", self.skill)  # separate schema version is gone
+        self.assertIn("urn:ph:schema:project-harness", self.skill)
+        self.assertIn("不再有独立的 Schema 版本", self.skill)
+
+    def test_one_time_entry_switch_documented(self):
+        # old (<=1.1.7) prepare necessarily rejects the schema-less package
+        self.assertIn("必然拒绝本包", self.skill)
+        self.assertIn("不假称自动恢复", self.skill)
+        self.assertIn("v1.1.8", self.skill)
+        self.assertIn("新的仓外安全目录", self.skill)
+        self.assertIn("不覆盖用户级入口与目标项目", self.skill)
+        self.assertIn("prepare --version 1.1.8", self.skill)
+        # old schema_version field is removed only after finalize passes
+        self.assertIn("仅在 finalize", self.skill)
 
     def test_skill_keeps_upgrade_in_same_session(self):
         self.assertIn("本会话按那份执行", self.skill)

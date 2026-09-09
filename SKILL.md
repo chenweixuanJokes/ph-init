@@ -25,12 +25,12 @@ description: "初始化、检查或同步本仓库的项目级 Harness（PH）�
 
 ## 唯一源与准备
 
-正式源只有 `https://github.com/chenweixuanJokes/ph-init.git`。`latest` 取数值最大的稳定 tag（排除预发布与非版本标签），并固定到该 tag 的 commit。本批版本为 `1.1.7`（Schema `1.1.1`，十个必需 Skill）。Schema 与发布版本独立，本批不改 Schema。
+正式源只有 `https://github.com/chenweixuanJokes/ph-init.git`。`latest` 取数值最大的稳定 tag（排除预发布与非版本标签），并固定到该 tag 的 commit。本批版本为 `1.1.8`（十个必需 Skill）。PH 只有这一个版本号：不再有独立的 Schema 版本，发行包与项目清单都不携带 `schema_version` 字段，schema 标识固定为无版本的 `urn:ph:schema:project-harness`；`template_version` 仍表示项目已完成升级的 PH 版本。
 
 当前这份 Skill 可能是旧用户入口或 shadow 副本。**初始化必须先准备发行根，再读该根的 `SKILL.md` 并只执行该根脚本**。不要用眼前这份本地 `assets/scaffold` 冒充最新版。离线内核可以安装它携带的确定版本，但不代表最新正式版。
 
 ```text
-python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.7 --repo <target>
+python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.8 --repo <target>
 ```
 
 stdout JSON：`root` `version` `tag` `commit` `source`（`source` 是固定仓库 URL 字符串）。材料下在目标仓库外的隔离目录，不读不传目标内容。同一 commit 已在本地时检查可不访问网络。无 tag、网络失败、tag/commit/`release.json` 不一致：停止，不回退到未准备的本地包。
@@ -43,7 +43,7 @@ python3 <release-root>/scripts/ph_release.py support
 
 记下 JSON 里的 `root`。后续 dry-run 与 apply 固定同一 `version`/`commit`。预检可以下载，不得改目标。
 
-旧入口（例如 `~/.agents/skills/ph-init` 仍是 1.1.0 九 Skill）没有 `ph_release.py` 时，先把唯一 GitHub 源 clone 到一个新的仓外目录，从新 clone 运行 prepare；不覆盖旧项目入口。用输出的 `root` 读取新 Skill 并执行，不继续跑旧目录的 `ph_init.py init` 充当最新安装。已经持有本次 prepare 的固定 root 时，读取其中 Skill 后直接进入分流，不再次 prepare。
+旧入口（本版之前的用户级 `ph-init` 副本）prepare 会**必然拒绝本包**：旧脚本必查发行元数据里的 `schema_version`，本包已删除该键。这是预期现象，不重试、不回退、不假称自动恢复。一次性入口切换（v1.1.8 稳定标签发布后适用，未发布不实际下载）：把官方稳定标签 v1.1.8 clone 到一个**新的仓外安全目录**（如 `mktemp -d` 创建），不覆盖用户级入口与目标项目，不用 `main` 或本地开发树冒充发行；在该新目录运行 `python3 <新目录>/scripts/ph_release.py prepare --version 1.1.8`，用输出的 `root` 读取新 Skill 并执行，不继续跑旧目录脚本充当最新安装。已装项目经确认后用该新根按 merge-update 步骤合并、verify、finalize；旧 `schema_version` 字段仅在 finalize 验收通过后随版本写入一起移除。已经持有本次 prepare 的固定 root 时，读取其中 Skill 后直接进入分流，不再次 prepare。
 
 `build_scaffold.py` / `build_project_template.py` 是旧 monorepo 作者工具，不是发布源，安装与升级不要跑它们。
 
@@ -100,5 +100,5 @@ python3 <project-or-installed-ph-init>/scripts/ph_init.py sync [--apply] [--mode
 - 未先安装模板再盖旧正文：存量内容经仓外合并候选接入，`sources` 快照与 plan 均在仓外生成，发行树未被改动；已有正文以复用 / 引用登记，未复制第二套，冲突未擅自裁决。
 - `--adopt-plan` 仅用于尚无 `.agents/ph.json` 的目标；`--apply` 后已装内核 `check` 通过；未创建 `.zcode/skills`。
 - `.agents/init-report.md` 覆盖指引第 5 节全部独立 id；未核实内容未伪装成规范或事实，未执行命令未标通过，未臆造 ADR / 意图 / 访谈 / 记忆 / 测试通过。安装检查通过不代表文档补全完成。最终 `docs/` 只留 `README.md` 与三域；未获迁移授权或存在冲突的旧目录记未完成，不把长期并存当完成。
-- 已装旧版未走 `init --apply`；升级在本会话用发行根 `ph_merge_update.py` 做完，未另开技能、未自动 finalize。文档补全和普通 check/sync 未擅自升版本。
+- 已装旧版未走 `init --apply`；升级在本会话用发行根 `ph_merge_update.py` 做完，未另开技能、未自动 finalize。旧入口拒绝新包时已按一次性入口切换取得 1.1.8 新根；旧 `schema_version` 字段仅在 finalize 通过后移除。文档补全和普通 check/sync 未擅自升版本。
 - 未自动 commit / push / 公开仓库、部署或发送通知。

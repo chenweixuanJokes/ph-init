@@ -40,9 +40,9 @@ REQUIRED_SKILLS = [
 ]
 
 
-def _read_release_versions() -> tuple[str, str]:
+def _read_release_version() -> str:
     data = json.loads((REPO_ROOT / "release.json").read_text(encoding="utf-8"))
-    return str(data["version"]), str(data["schema_version"])
+    return str(data["version"])
 
 
 def _bump_patch(version: str, delta: int) -> str:
@@ -53,8 +53,9 @@ def _bump_patch(version: str, delta: int) -> str:
     return f"{major}.{minor}.{next_patch}"
 
 
-CURRENT, CURRENT_SCHEMA = _read_release_versions()
+CURRENT = _read_release_version()
 NEXT = _bump_patch(CURRENT, 1)
+LEGACY_VERSION = "1.1.7"
 
 
 def run(argv, cwd=None):
@@ -137,10 +138,10 @@ class CheckReleaseTests(unittest.TestCase):
         data.update(fields)
         self.write_json(path, data)
 
-    def mutate_schema_id(self, repo: Path, schema_id: str) -> None:
+    def mutate_schema(self, repo: Path, **fields) -> None:
         path = repo / "assets/scaffold/.agents/ph.schema.json"
         data = json.loads(path.read_text(encoding="utf-8"))
-        data["$id"] = schema_id
+        data.update(fields)
         self.write_json(path, data)
 
     def set_index(self, repo: Path, hops: list[dict]) -> None:
@@ -155,8 +156,8 @@ class CheckReleaseTests(unittest.TestCase):
         result = check_release.validate_tree(REPO_ROOT, repo=REPO_ROOT, tag=None)
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["version"], CURRENT)
-        self.assertEqual(result["schema_version"], CURRENT_SCHEMA)
         self.assertEqual(result["required_skills"], REQUIRED_SKILLS)
+        self.assertNotIn("schema_version", result)
 
     def test_cli_current_tree(self):
         buf = io.StringIO()
@@ -183,14 +184,30 @@ class CheckReleaseTests(unittest.TestCase):
 
     def test_rejects_mismatched_metadata(self):
         repo = self.git_repo("ph-check-meta-")
-        self.mutate_release(repo, schema_version="9.9.9")
-        self.assert_fails(repo, "$id")
+        self.mutate_release(repo, schema_version="1.1.1")
+        self.assert_fails(repo, "unsupported keys")
 
         repo = self.git_repo("ph-check-schema-id-")
-        self.mutate_schema_id(repo, "urn:ph:schema:project-harness:0.0.1")
+        self.mutate_schema(repo, **{"$id": "urn:ph:schema:project-harness:1.1.1"})
         self.assert_fails(repo, "$id")
 
+        repo = self.git_repo("ph-check-schema-id-2-")
+        self.mutate_schema(repo, **{"$id": "urn:ph:schema:other"})
+        self.assert_fails(repo, "$id")
+
+        repo = self.git_repo("ph-check-schema-field-")
+        self.mutate_schema(
+            repo,
+            required=["$schema", "schema_version"],
+            properties={"schema_version": {"const": "1.1.1"}},
+        )
+        self.assert_fails(repo, "schema_version")
+
         repo = self.git_repo("ph-check-manifest-")
+        self.mutate_manifest(repo, schema_version="1.1.1")
+        self.assert_fails(repo, "schema_version")
+
+        repo = self.git_repo("ph-check-manifest-2-")
         self.mutate_manifest(repo, template_version="0.0.1")
         self.assert_fails(repo, "template_version")
 
@@ -340,6 +357,69 @@ class CheckReleaseTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
         self.assert_fails(repo, f"missing migration record {published} -> {CURRENT}")
 
+    def write_legacy_tree(self, root: Path, version: str, schema_version: str, *, manifest_schema: str | None = None) -> None:
+        """Minimal pre-1.1.8 tree for the ph_release compat branch."""
+
+        manifest_schema = manifest_schema or schema_version
+        release = {
+            "format_version": 1,
+            "version": version,
+            "schema_version": schema_version,
+            "repository": check_release.ph_release.FIXED_SOURCE,
+            "required_skills": REQUIRED_SKILLS,
+        }
+        manifest = {
+            "schema_version": manifest_schema,
+            "template_version": version,
+            "skills": {"required_names": REQUIRED_SKILLS},
+        }
+        schema = {"$id": f"urn:ph:schema:project-harness:{schema_version}"}
+        hop = {
+            "from_version": "1.0.0",
+            "to_version": version,
+            "path": f"migrations/1.0.0-to-{version}.md",
+            "items": ["legacy-fixture"],
+        }
+        files = {
+            "release.json": release,
+            "SKILL.md": "# ph-init\n",
+            "scripts/ph_init.py": "print('init')\n",
+            "scripts/ph_release.py": "print('release')\n",
+            "scripts/ph_merge_update.py": "print('merge')\n",
+            "assets/scaffold/.agents/ph.json": manifest,
+            "assets/scaffold/.agents/ph.schema.json": schema,
+            "assets/scaffold/.agents/AGENTS.md": "# agents\n",
+            "migrations/index.json": {"format_version": 1, "migrations": [hop]},
+            f"migrations/1.0.0-to-{version}.md": f"# 1.0.0 to {version}\n",
+        }
+        for name in REQUIRED_SKILLS:
+            if name != "ph-init":
+                files[f"assets/scaffold/.agents/skills/{name}/SKILL.md"] = f"# {name}\n"
+        for rel, data in files.items():
+            if isinstance(data, str):
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(data, encoding="utf-8")
+            else:
+                self.write_json(root / rel, data)
+
+    def test_prepared_compat_branches_for_legacy_trees(self):
+        legacy = self.temp_dir("ph-check-legacy-ok-")
+        self.write_legacy_tree(legacy, LEGACY_VERSION, "1.1.1")
+        check_release._call_prepared_tree(legacy, LEGACY_VERSION, REQUIRED_SKILLS)
+
+        inconsistent = self.temp_dir("ph-check-legacy-bad-")
+        self.write_legacy_tree(inconsistent, LEGACY_VERSION, "1.1.1", manifest_schema="9.9.9")
+        with self.assertRaises(check_release.CheckError) as ctx:
+            check_release._call_prepared_tree(inconsistent, LEGACY_VERSION, REQUIRED_SKILLS)
+        self.assertIn("schema_version", str(ctx.exception))
+
+        # A >= 1.1.8 tree must not sneak the legacy shape through compat.
+        residue = self.temp_dir("ph-check-residue-")
+        self.write_legacy_tree(residue, "1.1.8", "1.1.1")
+        with self.assertRaises(check_release.CheckError) as ctx:
+            check_release._call_prepared_tree(residue, "1.1.8", REQUIRED_SKILLS)
+        self.assertIn("schema_version", str(ctx.exception))
+
     def test_mocked_git_tags_reject_payload_rewrite_of_published_version(self):
         repo = self.temp_dir("ph-check-mock-")
         published = {"release.json": b'{"version":"1.1.1"}\n', "SKILL.md": b"old\n"}
@@ -361,7 +441,6 @@ class CheckReleaseTests(unittest.TestCase):
         ]
         release = {
             "version": "1.1.1",
-            "schema_version": "1.1.1",
             "required_skills": REQUIRED_SKILLS,
         }
         with mock.patch.object(check_release, "list_published_tags", return_value={"v1.1.1": "a" * 40}), \

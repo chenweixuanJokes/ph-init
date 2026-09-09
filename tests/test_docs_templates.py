@@ -58,13 +58,33 @@ class DocsTemplateTests(unittest.TestCase):
                     elif child.suffix == ".md" and child != index:
                         self.assertIn(child.resolve(), targets)
 
-    def test_docs_migration_keeps_schema_and_skill_contract(self):
+    def test_docs_migration_keeps_single_version_contract(self):
         release = json.loads((ROOT / "release.json").read_text())
-        self.assertEqual(release["schema_version"], "1.1.1")
+        self.assertEqual(release["version"], "1.1.8")
+        self.assertNotIn("schema_version", release)  # single PH version since 1.1.8
         self.assertEqual(len(release["required_skills"]), 10)
+        manifest = json.loads((SCAFFOLD / ".agents/ph.json").read_text())
+        self.assertNotIn("schema_version", manifest)
+        self.assertEqual(manifest["template_version"], "1.1.8")
+        schema = json.loads((SCAFFOLD / ".agents/ph.schema.json").read_text())
+        self.assertEqual(schema["$id"], "urn:ph:schema:project-harness")  # fixed, versionless
+        self.assertNotIn("schema_version", schema.get("required", []))
+        self.assertNotIn("schema_version", schema.get("properties", {}))
         hops = json.loads((ROOT / "migrations/index.json").read_text())["migrations"]
         hop = next(h for h in hops if h["from_version"] == "1.1.2")
         self.assertEqual(hop["items"], ["init-docs-workflow", "docs-guidance", "docs-project-preserve"])
+        hop_118 = next(h for h in hops if h["from_version"] == "1.1.7")
+        self.assertEqual(hop_118["to_version"], "1.1.8")
+        self.assertEqual(hop_118["items"], ["single-ph-version"])
+
+    def test_single_ph_version_migration_documented(self):
+        doc = (ROOT / "migrations/1.1.7-to-1.1.8.md").read_text(encoding="utf-8")
+        for heading in ("## why", "## from", "## to", "## affected",
+                        "## preserve", "## conflict", "## verify"):
+            self.assertIn(heading, doc)
+        for term in ("single-ph-version", "schema_version", "v1.1.8",
+                     "新的仓外", "不覆盖", "finalize"):
+            self.assertIn(term, doc)
 
 
 if __name__ == "__main__":

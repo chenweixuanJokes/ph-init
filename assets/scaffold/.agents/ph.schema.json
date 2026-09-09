@@ -1,13 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ph:schema:project-harness:1.1.1",
+  "$id": "urn:ph:schema:project-harness",
   "title": "PH repository manifest",
   "description": "Machine-readable Project Harness inventory. All paths are repository-relative and canonical content lives under .agents/.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "$schema",
-    "schema_version",
     "template_version",
     "adapter_mode",
     "canonical",
@@ -29,7 +28,6 @@
   },
   "properties": {
     "$schema": { "const": "./ph.schema.json" },
-    "schema_version": { "$ref": "#/$defs/semver", "const": "1.1.1" },
     "template_version": { "$ref": "#/$defs/semver" },
     "adapter_mode": { "enum": ["portable", "symlink"] },
     "canonical": {

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Validate the PH release tree and version discipline.
 
-Reads ``release.json`` as the single source for version, schema, and the
-required skill list. Does not talk to the public GitHub API. Temporary
-trees are never auto-deleted; callers must move leftovers into ``~/trash``.
+Reads ``release.json`` as the single source for the version and the
+required skill list. Since 1.1.8 there is no independent schema_version:
+release.json and the manifest must not carry the field and the schema $id
+is fixed. Does not talk to the public GitHub API. Temporary trees are
+never auto-deleted; callers must move leftovers into ``~/trash``.
 """
 
 from __future__ import annotations
@@ -66,7 +68,7 @@ REQUIRED_ROOT_FILES = (
     "scripts/ph_merge_update.py",
 )
 MIGRATION_HEADINGS = ("why", "from", "to", "affected", "preserve", "conflict", "verify")
-SCHEMA_ID_PREFIX = "urn:ph:schema:project-harness:"
+SCHEMA_ID = "urn:ph:schema:project-harness"
 
 
 class CheckError(Exception):
@@ -175,17 +177,12 @@ def load_release(root: Path) -> dict:
         raise CheckError("illegal release.json: format_version must be an integer")
     _const(format_version, FORMAT_VERSION, "release.json.format_version")
     version = _semver(_need(data, "version", "release.json"), "release.json.version")
-    schema_version = _semver(
-        _need(data, "schema_version", "release.json"),
-        "release.json.schema_version",
-    )
     repository = _need(data, "repository", "release.json")
     if not isinstance(repository, str) or repository != ph_release.FIXED_SOURCE:
         raise CheckError("illegal release.json: repository mismatch")
     extra = set(data) - {
         "format_version",
         "version",
-        "schema_version",
         "repository",
         "required_skills",
     }
@@ -202,7 +199,6 @@ def load_release(root: Path) -> dict:
         raise CheckError("illegal release.json: required_skills[0] must be ph-init")
     return {
         "version": version,
-        "schema_version": schema_version,
         "required_skills": list(skills),
         "repository": repository,
     }
@@ -429,18 +425,20 @@ def validate_markdown_links(path: Path, root: Path) -> None:
             raise CheckError(f"broken markdown link in {path}: {href}")
 
 
-def validate_schema(root: Path, schema_version: str) -> dict:
+def validate_schema(root: Path) -> dict:
     path = require_regular_file(
         root, "assets/scaffold/.agents/ph.schema.json", "schema"
     )
     schema = read_json_object(path, "schema")
     schema_id = schema.get("$id")
-    expected_id = f"{SCHEMA_ID_PREFIX}{schema_version}"
-    if schema_id != expected_id:
-        raise CheckError(f"illegal schema $id: expected {expected_id!r}, got {schema_id!r}")
-    declared = schema.get("properties", {}).get("schema_version", {})
-    if isinstance(declared, dict) and declared.get("const") not in {None, schema_version}:
-        raise CheckError("illegal schema: schema_version const must match release")
+    if schema_id != SCHEMA_ID:
+        raise CheckError(f"illegal schema $id: expected {SCHEMA_ID!r}, got {schema_id!r}")
+    required = schema.get("required")
+    if isinstance(required, list) and "schema_version" in required:
+        raise CheckError("illegal schema: required must not list schema_version")
+    properties = schema.get("properties")
+    if isinstance(properties, dict) and "schema_version" in properties:
+        raise CheckError("illegal schema: properties must not define schema_version")
     return schema
 
 
@@ -450,12 +448,9 @@ def validate_manifest(root: Path, release: Mapping[str, object]) -> None:
     extra_schema = data.get("$schema")
     if extra_schema not in {None, "./ph.schema.json"}:
         raise CheckError("illegal manifest: $schema must be ./ph.schema.json")
-    schema_version = _semver(data.get("schema_version"), "manifest.schema_version")
+    if "schema_version" in data:
+        raise CheckError("illegal manifest: schema_version was removed; delete the field")
     template_version = _semver(data.get("template_version"), "manifest.template_version")
-    if schema_version != release["schema_version"]:
-        raise CheckError(
-            f"illegal manifest: schema_version must be {release['schema_version']!r}"
-        )
     if template_version != release["version"]:
         raise CheckError(
             f"illegal manifest: template_version must be {release['version']!r}"
@@ -762,7 +757,7 @@ def validate_version_discipline(
 def validate_tree(root: Path, repo: Path | None = None, tag: str | None = None) -> dict:
     release = load_release(root)
     hops = load_migrations(root)
-    validate_schema(root, str(release["schema_version"]))
+    validate_schema(root)
     validate_manifest(root, release)
     validate_prepared_compat(root, release)
     validate_skills_and_docs(root, list(release["required_skills"]))
@@ -773,7 +768,6 @@ def validate_tree(root: Path, repo: Path | None = None, tag: str | None = None) 
     return {
         "status": "ok",
         "version": release["version"],
-        "schema_version": release["schema_version"],
         "required_skills": release["required_skills"],
         "tag": tag,
     }

@@ -108,6 +108,18 @@
       "prompt": "这个仓库已经按 PH 1.1.4 初始化过，用户现在说：初始化 PH。",
       "expected_output": "触发 ph-init。prepare 后发现已装且版本旧于发行根：停 init --apply / --adopt-plan，本会话读发行根 ph-merge-update Skill，跑 inspect → 按迁移说明语义合并 → verify → finalize。不另开技能，不自动 finalize。本 eval 不表示已实测。",
       "files": []
+    },
+    {
+      "id": 19,
+      "prompt": "用户目录里装的 ph-init 还是旧版，刚才升级时脚本报错 illegal release.json: missing schema_version。这个仓库已装 PH，帮我升到 1.1.8。",
+      "expected_output": "触发 ph-init。识别为旧版入口 prepare 必然拒绝 1.1.8 包（新包无 schema_version，旧脚本必查该键），不是网络故障，不重试不回退不假称自动恢复。向用户说明后执行一次性入口切换：把官方稳定标签 v1.1.8 clone 到新的仓外安全目录，不覆盖用户级入口与目标项目，不用 main 或本地开发树冒充发行；用新目录 prepare --version 1.1.8，读返回 root 的 SKILL，本会话按发行根 merge-update 步骤 inspect → 语义合并 → verify → finalize 完成，不 init --apply。finalize 通过后项目清单不再含 schema_version，template_version 写 1.1.8。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 20,
+      "prompt": "从 PH 1.1.6 直接升到 1.1.8。项目 ph.json 里还有 schema_version 字段，业务文档和没做完的升级记录都别动。",
+      "expected_output": "触发 ph-init 的升级分流。读完整迁移链 1.1.6→1.1.7→1.1.8，进度目录用最终目标版本 1.1.8；先按 1.1.7 项合并加星说明，再做 single-ph-version 单一版本与一次性入口切换项。业务正文、既有模式与未完成升级记录保留，已落地项不重做；旧 schema_version 字段仅在 finalize 验收通过后随 template_version=1.1.8 一起移除，schema 换无版本 $id。不重跑文档补全、不 init --apply。本 eval 不表示已实测。",
+      "files": []
     }
   ]
 }
