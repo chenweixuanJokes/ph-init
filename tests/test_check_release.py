@@ -37,7 +37,12 @@ REQUIRED_SKILLS = [
     "ph-intent-impl",
     "ph-intent-drop",
     "ph-merge-update",
+    "ph-docs-sync",
 ]
+# The pre-1.1.8 era shipped exactly ten skills (ph-docs-sync arrived in
+# 1.1.10); the synthetic legacy fixture keeps the historical list instead
+# of blindly inheriting the current one.
+LEGACY_TEN_SKILLS = REQUIRED_SKILLS[:-1]
 
 
 def _read_release_version() -> str:
@@ -383,12 +388,12 @@ class CheckReleaseTests(unittest.TestCase):
             "version": version,
             "schema_version": schema_version,
             "repository": check_release.ph_release.FIXED_SOURCE,
-            "required_skills": REQUIRED_SKILLS,
+            "required_skills": LEGACY_TEN_SKILLS,
         }
         manifest = {
             "schema_version": manifest_schema,
             "template_version": version,
-            "skills": {"required_names": REQUIRED_SKILLS},
+            "skills": {"required_names": LEGACY_TEN_SKILLS},
         }
         schema = {"$id": f"urn:ph:schema:project-harness:{schema_version}"}
         hop = {
@@ -409,7 +414,7 @@ class CheckReleaseTests(unittest.TestCase):
             "migrations/index.json": {"format_version": 1, "migrations": [hop]},
             f"migrations/1.0.0-to-{version}.md": f"# 1.0.0 to {version}\n",
         }
-        for name in REQUIRED_SKILLS:
+        for name in LEGACY_TEN_SKILLS:
             if name != "ph-init":
                 files[f"assets/scaffold/.agents/skills/{name}/SKILL.md"] = f"# {name}\n"
         for rel, data in files.items():

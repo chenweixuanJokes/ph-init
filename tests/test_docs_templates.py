@@ -60,12 +60,14 @@ class DocsTemplateTests(unittest.TestCase):
 
     def test_docs_migration_keeps_single_version_contract(self):
         release = json.loads((ROOT / "release.json").read_text())
-        self.assertEqual(release["version"], "1.1.9")
+        self.assertEqual(release["version"], "1.1.10")
         self.assertNotIn("schema_version", release)  # single PH version since 1.1.8
-        self.assertEqual(len(release["required_skills"]), 10)
+        self.assertEqual(len(release["required_skills"]), 11)
+        self.assertIn("ph-docs-sync", release["required_skills"])
         manifest = json.loads((SCAFFOLD / ".agents/ph.json").read_text())
         self.assertNotIn("schema_version", manifest)
-        self.assertEqual(manifest["template_version"], "1.1.9")
+        self.assertEqual(manifest["template_version"], "1.1.10")
+        self.assertEqual(manifest["skills"]["required_names"], release["required_skills"])
         schema = json.loads((SCAFFOLD / ".agents/ph.schema.json").read_text())
         self.assertEqual(schema["$id"], "urn:ph:schema:project-harness")  # fixed, versionless
         self.assertNotIn("schema_version", schema.get("required", []))
@@ -80,6 +82,9 @@ class DocsTemplateTests(unittest.TestCase):
         self.assertEqual(hop_119["to_version"], "1.1.9")
         self.assertEqual(sorted(hop_119["items"]),
                          ["repository-rename", "tool-neutral-adapters", "worktree-auto-branch"])
+        hop_1110 = next(h for h in hops if h["from_version"] == "1.1.9")
+        self.assertEqual(hop_1110["to_version"], "1.1.10")
+        self.assertEqual(hop_1110["items"], ["docs-sync-skill"])
 
     def test_single_ph_version_migration_documented(self):
         doc = (ROOT / "migrations/1.1.7-to-1.1.8.md").read_text(encoding="utf-8")
@@ -96,8 +101,51 @@ class DocsTemplateTests(unittest.TestCase):
                         "## preserve", "## conflict", "## verify"):
             self.assertIn(heading, doc)
         for term in ("worktree-auto-branch", "当前分支", "任务分支", "不再询问",
-                     "--existing", "v1.1.8", "v1.1.9"):
+                     "--existing", "v1.1.8", "1.1.9"):
             self.assertIn(term, doc)
+
+    def test_docs_sync_skill_migration_documented(self):
+        doc = (ROOT / "migrations/1.1.9-to-1.1.10.md").read_text(encoding="utf-8")
+        for heading in ("## why", "## from", "## to", "## affected",
+                        "## preserve", "## conflict", "## verify"):
+            self.assertIn(heading, doc)
+        for term in ("docs-sync-skill", "ph-docs-sync", "1.1.9", "1.1.10",
+                     "十一个必需 Skill", "不自动同步任何业务文档", "同名自定义 Skill",
+                     "blocked", "adapter mode"):
+            self.assertIn(term, doc)
+
+    def test_docs_sync_skill_shipped_and_indexed(self):
+        skill = SCAFFOLD / ".agents/skills/ph-docs-sync/SKILL.md"
+        self.assertTrue(skill.is_file())
+        text = skill.read_text(encoding="utf-8")
+        for term in ("name: ph-docs-sync", "只读", "可直接证实", "近 7 天提交只",
+                     "规范冲突不降级规范", "五字段", "不自动",
+                     # command examples: full preconditions, static basis
+                     "前置条件", "构建产物", "工作目录", "步骤依赖", "静态依据",
+                     # config claims: name / configurability / default, no guessing
+                     "可配置性", "默认值", "框架印象",
+                     # evidence handling: search coverage, commit range, default scope
+                     "搜索覆盖不足", "指定区间", "默认范围",
+                     # post-repair diff and link re-check step
+                     "diff 与链接复核"):
+            self.assertIn(term, text)
+        evals = json.loads(
+            (SCAFFOLD / ".agents/skills/ph-docs-sync/evals/evals.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(evals["skill_name"], "ph-docs-sync")
+        self.assertTrue(evals["evals"])
+        # Governance and the completion guide register the skill instead of
+        # denying its existence.
+        governance = (ENGINEERING / "文档治理.md").read_text(encoding="utf-8")
+        self.assertIn("ph-docs-sync", governance)
+        self.assertIn("规则源", governance)
+        self.assertNotIn("不是 Skill", governance)
+        guide = (ENGINEERING / "初始化与文档补全.md").read_text(encoding="utf-8")
+        self.assertIn("ph-docs-sync", guide)
+        self.assertNotIn("无独立 Skill", guide)
+        agents = (SCAFFOLD / ".agents/AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("十一名固定", agents)
+        self.assertIn("ph-docs-sync", agents)
 
 
 if __name__ == "__main__":

@@ -57,11 +57,13 @@ CHAIN_110 = [
     "worktree-auto-branch",
     "tool-neutral-adapters",
     "repository-rename",
+    "docs-sync-skill",
 ]
 CHAIN_100 = ["intent-domain", *CHAIN_110]
 CHAIN_111 = CHAIN_110[6:]  # everything after the 1.1.0 -> 1.1.1 hop
-CHAIN_117 = ["single-ph-version", "worktree-auto-branch", "tool-neutral-adapters", "repository-rename"]
-CHAIN_118 = ["worktree-auto-branch", "tool-neutral-adapters", "repository-rename"]
+CHAIN_117 = ["single-ph-version", "worktree-auto-branch", "tool-neutral-adapters", "repository-rename", "docs-sync-skill"]
+CHAIN_118 = ["worktree-auto-branch", "tool-neutral-adapters", "repository-rename", "docs-sync-skill"]
+CHAIN_119 = ["docs-sync-skill"]
 CHAIN_112 = [
     "init-docs-workflow",
     "docs-guidance",
@@ -336,7 +338,7 @@ class MergeUpdateTests(unittest.TestCase):
                                "adopt-plan-init", "adopt-existing-content", "init-report-coverage",
                                "init-unified-entry", "plain-user-questions",
                                "prepare-star-fork", "single-ph-version", "worktree-auto-branch",
-                               "tool-neutral-adapters", "repository-rename"])
+                               "tool-neutral-adapters", "repository-rename", "docs-sync-skill"])
         state = self.write_state(repo, from_version="1.1.2", items=ids)
         before_manifest = manifest_path.read_bytes()
         for status in ("pending", "blocked"):
@@ -370,7 +372,10 @@ class MergeUpdateTests(unittest.TestCase):
         self.write_agents(repo)
         self.seed_target_skills(repo)
         self.write_intent_layout(repo, in_progress=True)
-        self.seed_adapters(repo, mode, names)
+        # Adapters mirror every live canonical skill: these fixtures model the
+        # post-merge state where all target skills (ph-docs-sync included)
+        # are installed with byte-identical copies.
+        self.seed_adapters(repo, mode, TARGET_SKILLS)
         self.seed_gitignore(repo)
         return repo
 
@@ -388,7 +393,20 @@ class MergeUpdateTests(unittest.TestCase):
         self.write_agents(repo)
         self.seed_target_skills(repo)
         self.write_intent_layout(repo, in_progress=True)
-        self.seed_adapters(repo, mode, names)
+        self.seed_adapters(repo, mode, TARGET_SKILLS)
+        self.seed_gitignore(repo)
+        return repo
+
+    def fixture_at_119(self, mode="portable"):
+        """A 1.1.9 install: single version, three-adapter topology, ten skills."""
+        repo = self.git_repo(f"ph-merge-v119-{mode}-")
+        names = BASE_SKILLS + NEW_INTENT + ["ph-merge-update"]
+        self.write_manifest(repo, mode=mode, version="1.1.9", names=names)
+        self.write_agents(repo)
+        self.seed_target_skills(repo)
+        self.write_intent_layout(repo, in_progress=True)
+        # 1.1.9 installs carry no codex adapters (tool-neutral topology).
+        self.seed_adapters(repo, mode, TARGET_SKILLS, codex=False)
         self.seed_gitignore(repo)
         return repo
 
@@ -470,6 +488,129 @@ class MergeUpdateTests(unittest.TestCase):
                 self.assertTrue(ph_merge_update.finalize_payload(repo, True)["complete"])
                 ph_init.load_repo_manifest(repo)
                 self.assertTrue(ph_merge_update.inspect_payload(repo)["up_to_date"])
+
+    def test_docs_sync_same_name_custom_skill_blocks_inspect(self):
+        self.install_receipt()
+        repo = self.fixture_at_119()
+        custom = repo / ".agents/skills/ph-docs-sync/SKILL.md"
+        custom_body = (
+            "---\nname: ph-docs-sync\ndescription: team custom sync flow\n---\n"
+            "# our own sync skill\n项目自建同步流程，升级不得覆盖。\n"
+        )
+        custom.write_text(custom_body, encoding="utf-8")
+        before = self.tree_snapshot(repo)
+
+        inspected = ph_merge_update.inspect_payload(repo)
+        self.assertEqual(inspected["from"], "1.1.9")
+        self.assertEqual(inspected["to"], CURRENT)
+        self.assertEqual(inspected["profile"], "1.1.0-current-names")
+        self.assertTrue(
+            any("ph-docs-sync" in conflict for conflict in inspected["conflicts"]),
+            inspected["conflicts"],
+        )
+        self.assertFalse(inspected["can_finalize"])
+        # inspect stays read-only and the custom body survives byte-for-byte
+        self.assertEqual(self.tree_snapshot(repo), before)
+        self.assertEqual(custom.read_text(encoding="utf-8"), custom_body)
+
+    def test_docs_sync_blocked_item_keeps_custom_skill_and_version(self):
+        self.install_receipt()
+        repo = self.fixture_at_119()
+        custom = repo / ".agents/skills/ph-docs-sync/SKILL.md"
+        custom_body = (
+            "---\nname: ph-docs-sync\ndescription: team custom sync flow\n---\n"
+            "# our own sync skill\n项目自建同步流程，升级不得覆盖。\n"
+        )
+        custom.write_text(custom_body, encoding="utf-8")
+        manifest_path = repo / ".agents/ph.json"
+        before = manifest_path.read_bytes()
+
+        inspected = ph_merge_update.inspect_payload(repo)
+        state = inspected["suggested_state"]
+        self.assertEqual([i["id"] for i in state["items"]], CHAIN_119)
+        docs_sync = next(i for i in state["items"] if i["id"] == "docs-sync-skill")
+        docs_sync["status"] = "blocked"
+        docs_sync["evidence"] = "同名自定义 Skill，保留原件待用户决定"
+        dest = self.update_dir(repo)
+        dest.mkdir(parents=True, exist_ok=True)
+        self.write_json(dest / "state.json", state)
+        (dest / "report.md").write_text("# report\ndocs-sync-skill blocked\n", encoding="utf-8")
+
+        with self.assertRaises(ph_init.PHError) as ctx:
+            ph_merge_update.verify_payload(repo)
+        self.assertIn("docs-sync-skill", str(ctx.exception))
+        with self.assertRaises(ph_init.PHError):
+            ph_merge_update.finalize_payload(repo, False)
+        with self.assertRaises(ph_init.PHError):
+            ph_merge_update.finalize_payload(repo, True)
+        # a blocked item never advances the version or rewrites the state
+        self.assertEqual(manifest_path.read_bytes(), before)
+        self.assertEqual(
+            json.loads(manifest_path.read_text(encoding="utf-8"))["template_version"], "1.1.9"
+        )
+        self.assertEqual(json.loads((dest / "state.json").read_text())["status"], "in_progress")
+        self.assertEqual(custom.read_text(encoding="utf-8"), custom_body)
+
+        # Marking the blocked item applied while the custom skill stays in
+        # place must not pass verify: the installed skill has to match the
+        # release bytes during the 1.1.10 upgrade.
+        docs_sync["status"] = "applied"
+        docs_sync["evidence"] = "falsely claims the release skill was installed"
+        self.write_json(dest / "state.json", state)
+        with self.assertRaises(ph_init.PHError) as ctx:
+            ph_merge_update.verify_payload(repo)
+        self.assertIn("does not match the release skill", str(ctx.exception))
+        self.assertEqual(manifest_path.read_bytes(), before)
+        self.assertEqual(custom.read_text(encoding="utf-8"), custom_body)
+
+    def test_upgrade_from_119_installs_docs_sync_and_preserves_docs(self):
+        self.install_receipt()
+        repo = self.fixture_at_119()
+        wiki = repo / "docs/项目Wiki/项目概述.md"
+        wiki.parent.mkdir(parents=True, exist_ok=True)
+        wiki.write_text("# 项目概述\n项目事实：升级不得自动同步业务文档。\n", encoding="utf-8")
+        wiki_bytes = wiki.read_bytes()
+        governance = repo / "docs/约束规范/工程规范/文档治理.md"
+        governance.parent.mkdir(parents=True, exist_ok=True)
+        governance.write_text(
+            "# 文档治理\n项目定制：同步修复前须抄送负责人。\n", encoding="utf-8"
+        )
+        governance_bytes = governance.read_bytes()
+
+        inspected = ph_merge_update.inspect_payload(repo)
+        self.assertEqual(inspected["from"], "1.1.9")
+        self.assertEqual([i["id"] for i in inspected["suggested_state"]["items"]], CHAIN_119)
+        self.write_state(repo, from_version="1.1.9", items=CHAIN_119)
+        verified = ph_merge_update.verify_payload(repo)
+        self.assertTrue(verified["ok"])
+
+        result = ph_merge_update.finalize_payload(repo, True)
+        self.assertTrue(result["complete"])
+        self.assertEqual(result["from"], "1.1.9")
+        written = json.loads((repo / ".agents/ph.json").read_text(encoding="utf-8"))
+        self.assertEqual(written["template_version"], CURRENT)
+        self.assertIn("ph-docs-sync", written["skills"]["required_names"])
+        self.assertEqual(written["adapter_mode"], "portable")
+        # the upgrade installs the skill and never syncs business documents
+        skill = repo / ".agents/skills/ph-docs-sync"
+        self.assertTrue((skill / "SKILL.md").is_file())
+        self.assertEqual(
+            (skill / "SKILL.md").read_bytes(),
+            (SCAFFOLD / ".agents/skills/ph-docs-sync/SKILL.md").read_bytes(),
+        )
+        self.assertTrue((repo / ".claude/skills/ph-docs-sync/SKILL.md").is_file())
+        self.assertEqual(wiki.read_bytes(), wiki_bytes)
+        self.assertEqual(governance.read_bytes(), governance_bytes)
+        # the upgraded repo's own installer discovers the new required skill
+        installed = repo / ".agents/skills/ph-init/scripts/ph_init.py"
+        proc = run([sys.executable, str(installed), "check", "--repo", str(repo)])
+        self.assertIn("status=ok", proc.stdout, proc.stdout)
+        self.assertIn(".agents/skills/ph-docs-sync/SKILL.md", proc.stdout)
+        # repeated runs stay idempotent
+        self.assertTrue(ph_merge_update.inspect_payload(repo)["up_to_date"])
+        again = ph_merge_update.finalize_payload(repo, True)
+        self.assertTrue(again["complete"])
+        self.assertEqual(wiki.read_bytes(), wiki_bytes)
 
     def test_upgrade_from_118_worktree_and_tool_neutral(self):
         self.install_receipt()

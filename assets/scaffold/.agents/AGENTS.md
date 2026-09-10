@@ -93,7 +93,7 @@ docs/
 
 ## PH Skills
 
-十名固定，目录名与 `name` 一致且均为 kebab-case；所有 Skill 都以 `.agents/skills/<name>/SKILL.md` 为唯一人工编辑源。升官方发行版仍由 `ph-init` 会话按 `ph-merge-update` 步骤做完，不要用 `ph-init --apply` 覆盖本文件已填事实。升级进度在 `.agents/updates/<版本>/`（`state.json` 与 `report.md`），不是业务文档。
+十一名固定，目录名与 `name` 一致且均为 kebab-case；所有 Skill 都以 `.agents/skills/<name>/SKILL.md` 为唯一人工编辑源。升官方发行版仍由 `ph-init` 会话按 `ph-merge-update` 步骤做完，不要用 `ph-init --apply` 覆盖本文件已填事实。升级进度在 `.agents/updates/<版本>/`（`state.json` 与 `report.md`），不是业务文档。
 
 | Skill | 何时用 |
 | --- | --- |
@@ -107,5 +107,6 @@ docs/
 | `.agents/skills/ph-intent-new/SKILL.md` | 录入或补充意图及访谈纪要；新建入待办，补充保持原目录 |
 | `.agents/skills/ph-intent-impl/SKILL.md` | 可写时先迁实施，再准备交接并进入原生计划模式 |
 | `.agents/skills/ph-intent-drop/SKILL.md` | 明确原因后从待办或实施废弃意图并修复引用 |
+| `.agents/skills/ph-docs-sync/SKILL.md` | 对照当前代码、配置、锁文件与 CI 核验 README、docs 配置说明、使用示例与 Wiki；检查默认只读，明确授权后才修可直接证实的不一致 |
 
 发现、触发与 frontmatter 约定遵循 Agent Skills：`name` + `description`（含触发与排除），`description` 不超过 1024 字符。意图字段与纪要规则见 `docs/约束规范/工程规范/意图与访谈.md`。

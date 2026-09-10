@@ -29,7 +29,7 @@ TRASH_ROOT = Path.home() / "trash"
 FIXED_SOURCE = ph_release.FIXED_SOURCE
 DOWNLOAD_SOURCE = ph_release.DOWNLOAD_SOURCE
 SCHEMA_ID = ph_release.SCHEMA_ID
-CURRENT_VERSION = "1.1.9"
+CURRENT_VERSION = "1.1.10"
 LEGACY_VERSION = "1.1.7"
 DEFAULT_SKILLS = [
     "ph-init",
@@ -42,6 +42,7 @@ DEFAULT_SKILLS = [
     "ph-intent-impl",
     "ph-intent-drop",
     "ph-merge-update",
+    "ph-docs-sync",
 ]
 REAL_MIGRATIONS = {
     "format_version": 1,
@@ -735,14 +736,21 @@ class PhReleaseTests(unittest.TestCase):
         self.assertEqual(manifest["schema_version"], "1.1.1")
         self.assertEqual(schema["$id"], "urn:ph:schema:project-harness:1.1.1")
 
-    def test_future_1_1_10_can_add_skill_and_prepare(self):
+    def test_future_release_can_add_skill_and_prepare(self):
         skills = [*DEFAULT_SKILLS, "ph-future-skill"]
-        files = self.release_files("1.1.10", skills=skills)
-        transport, _ = self.transport_for(files, version="1.1.10")
-        prepared = self.prepare(transport, "1.1.10")
-        self.assertEqual(prepared.version, "1.1.10")
+        files = self.release_files("1.1.11", skills=skills)
+        transport, _ = self.transport_for(files, version="1.1.11")
+        prepared = self.prepare(transport, "1.1.11")
+        self.assertEqual(prepared.version, "1.1.11")
         self.assertTrue(
             (prepared.root / "assets/scaffold/.agents/skills/ph-future-skill/SKILL.md").is_file()
+        )
+        # the current release's own docs-sync skill is part of the default set
+        current = self.release_files()
+        transport, _ = self.transport_for(current)
+        prepared = self.prepare(transport)
+        self.assertTrue(
+            (prepared.root / "assets/scaffold/.agents/skills/ph-docs-sync/SKILL.md").is_file()
         )
 
     def test_real_repo_tree_validates_and_uses_real_migration_schema(self):

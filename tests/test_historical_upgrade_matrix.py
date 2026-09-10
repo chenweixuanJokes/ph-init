@@ -90,7 +90,7 @@ CORE_NON_INIT = (
 BASE_SKILLS = ("ph-init",) + CORE_NON_INIT
 OLD_ALIASES = ("ph-intent-capture", "ph-intent-plan", "ph-intent-abandon")
 NEW_INTENT = ("ph-intent-new", "ph-intent-impl", "ph-intent-drop")
-TARGET_SKILLS = BASE_SKILLS + NEW_INTENT + ("ph-merge-update",)
+TARGET_SKILLS = BASE_SKILLS + NEW_INTENT + ("ph-merge-update", "ph-docs-sync")
 LAYOUT_SKILLS = {
     "six-skills": BASE_SKILLS,
     "legacy-names": ("ph-init",) + CORE_NON_INIT + OLD_ALIASES,
@@ -125,6 +125,10 @@ AGENTS_TAIL = (
 )
 WIKI_APPEND = "\n升级矩阵注入的 Wiki 事实：本段必须在升级后逐字节保留。\n"
 BACKEND_APPEND = "\n升级矩阵注入的后端约束：仅允许 PostgreSQL 16，禁用其它数据库。\n"
+GOVERNANCE_APPEND = (
+    "\n## 项目文档治理定制（升级矩阵）\n\n"
+    "本节是项目自定义治理规则：文档同步修复前须抄送负责人。docs-sync-skill 合并规则索引时必须保留本节。\n"
+)
 INDEX_CUSTOM_BLOCK = (
     "\n## 项目索引定制（升级矩阵）\n\n"
     "本节是项目自定义索引说明：列出待办新特性时须同时标注访谈纪要链接。\n"
@@ -595,6 +599,22 @@ ENGINE_ENSURE = {
         # and install paths are not renamed. "rename" asserts exactly that
         # contract on the prepared target and the merged project.
         "payload": True, "skills": ("ph-merge-update",), "rename": True,
+    },
+    "docs-sync-skill": {
+        # 1.1.10 release deltas this item owns: the new ph-docs-sync skill
+        # (SKILL.md + evals), the canonical AGENTS.md skill table (eleven
+        # names plus the ph-docs-sync row), the governance §6 rule index that
+        # now registers the skill instead of denying one exists, the
+        # completion guide's fixed-skill count and D58 conventions, the
+        # scaffold ph-merge-update skill (version refs and the 1.1.10 item
+        # section it registers), and the ph-init runtime materials (root
+        # SKILL.md, release.json, migrations register this item). The upgrade
+        # installs the skill and merges the rule indexes only; business
+        # documents are never synced by this item - the matrix asserts the
+        # fixture's wiki/backend bodies survive byte-for-byte.
+        "payload": True, "skills": ("ph-docs-sync", "ph-merge-update"),
+        "agents": True,
+        "docs": [f"{W}/文档治理.md", f"{W}/初始化与文档补全.md"],
     },
 }
 SPECIAL_SCAFFOLD_RELS = {".gitignore", ".agents/ph.json", ".agents/ph.schema.json", ".agents/AGENTS.md"}
@@ -1072,12 +1092,19 @@ def _make_handler(item_id):
                        if not (engine.repo / ".agents" / "skills" / n / "SKILL.md").is_file()]
             assert not missing, f"scoped skills missing after merge: {missing}"
             facts.append(f"范围内 {len(spec['skills'])} 个 Skill 已在位且与发行根一致（已核对）")
-        for rel in spec.get("docs", []):
+        synced_docs = [rel for rel in spec.get("docs", []) if rel not in engine.preserved]
+        preserved_docs = [rel for rel in spec.get("docs", []) if rel in engine.preserved]
+        for rel in synced_docs:
             disk = engine.repo / rel
             target = engine.prepared.scaffold_dir / rel
             if not disk.read_bytes() == target.read_bytes():
                 raise AssertionError(f"no mutation reported but scoped file drifted: {rel}")
-        facts.append(f"范围内 {len(spec.get('docs', []))} 个文档已与发行根一致（已核对）")
+        facts.append(f"范围内 {len(synced_docs)} 个文档已与发行根一致（已核对）")
+        if preserved_docs:
+            facts.append(
+                f"范围内 {len(preserved_docs)} 个项目定制文档按策略保留原文"
+                f"（{'、'.join(preserved_docs)}，已核对）"
+            )
         if spec.get("payload"):
             facts.append("项目内 ph-init payload 已与发行根一致（先前项已刷新，已核对）")
         if spec.get("agents"):
@@ -1252,6 +1279,8 @@ def insert_project_customizations(repo: Path, case: dict) -> dict:
     wiki.write_bytes(wiki.read_bytes() + WIKI_APPEND.encode("utf-8"))
     backend = repo / "docs" / "约束规范" / "后端规范" / "后端规范.md"
     backend.write_bytes(backend.read_bytes() + BACKEND_APPEND.encode("utf-8"))
+    governance = repo / W / "文档治理.md"
+    governance.write_bytes(governance.read_bytes() + GOVERNANCE_APPEND.encode("utf-8"))
 
     # User-owned content inside the retired .codex adapter area: non ph-*
     # entries must survive the 1.1.9 tool-neutral retirement byte-for-byte.
@@ -1280,6 +1309,7 @@ def insert_project_customizations(repo: Path, case: dict) -> dict:
     preserved = {
         "docs/项目Wiki/项目概述.md": wiki.read_bytes(),
         "docs/约束规范/后端规范/后端规范.md": backend.read_bytes(),
+        f"{W}/文档治理.md": governance.read_bytes(),
         ".codex/skills/my-tool/SKILL.md": codex_tool_skill.read_bytes(),
         f"docs/意图/已废弃/新特性/{DROPPED_NAME}": dropped.read_bytes(),
     }
@@ -1307,6 +1337,7 @@ def insert_project_customizations(repo: Path, case: dict) -> dict:
     customized_scaffold = {
         "docs/项目Wiki/项目概述.md",
         "docs/约束规范/后端规范/后端规范.md",
+        f"{W}/文档治理.md",
     }
     if not old_layout:
         customized_scaffold.add("docs/意图/待办/新特性/README.md")
@@ -1430,10 +1461,15 @@ class HistoricalUpgradeMatrixTests(unittest.TestCase):
             self.assertTrue(evidence and evidence.strip(), f"empty evidence for {item['id']}")
             item["status"] = status
             item["evidence"] = evidence
-        self.assertIsNotNone(
-            engine.codex_seen,
-            "tool-neutral-adapters never classified the .codex/skills adapters",
-        )
+        if "tool-neutral-adapters" in item_ids:
+            self.assertIsNotNone(
+                engine.codex_seen,
+                "tool-neutral-adapters never classified the .codex/skills adapters",
+            )
+        else:
+            # Tool-neutral 1.1.9+ installs carry no .codex adapters and the
+            # item is not in their chain: nothing to classify.
+            self.assertIsNone(engine.codex_seen)
         updates = repo / ".agents" / "updates" / CURRENT
         updates.mkdir(parents=True, exist_ok=True)
         (updates / "state.json").write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -1556,39 +1592,48 @@ class HistoricalUpgradeMatrixTests(unittest.TestCase):
         # alias retirements owned by the earlier intent-skill-names hop) ended
         # up archived exactly once, in a single <date>-pre-update/codex-skills
         # directory shared by the semantic merge and finalize --apply, with
-        # the pre-upgrade bytes intact.
+        # the pre-upgrade bytes intact. The tool-neutral 1.1.9 installer
+        # creates no .codex adapters at all, so those cases expect empty
+        # retirement sets and no archive directory.
+        expected_codex = set(LAYOUT_SKILLS[layout]) - set(OLD_ALIASES)
+        if semver_tuple(version) >= (1, 1, 9):
+            expected_codex = set()
         self.assertEqual(
-            set(engine.codex_seen), set(LAYOUT_SKILLS[layout]) - set(OLD_ALIASES),
+            set(engine.codex_seen or ()), expected_codex,
             "unexpected set of live codex adapters at semantic-merge time",
         )
         archive_days = sorted(
-            child for child in (repo / ".agents" / "archived").iterdir()
+            child for child in (repo / ".agents/archived").iterdir()
             if child.name.endswith(CODEX_ARCHIVE_SUFFIX) and (child / CODEX_ARCHIVE_CHILD).is_dir()
         )
-        self.assertEqual(len(archive_days), 1,
-                         "semantic merge and finalize must share one archive date directory")
-        codex_archive = archive_days[0] / CODEX_ARCHIVE_CHILD
-        self.assertEqual({p.name for p in codex_archive.iterdir()}, set(engine.codex_seen))
-        for name in engine.codex_seen:
-            dest = codex_archive / name
-            if mode == "portable":
-                prefix = f".agents/skills/{name}/"
-                expected_files = {
-                    rel[len(prefix):]: digest
-                    for rel, digest in before.items() if rel.startswith(prefix)
-                }
-                archived_files = {
-                    path.relative_to(dest).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-                    for path in iter_regular_files(dest, strict=True)
-                }
-                self.assertEqual(archived_files, expected_files,
-                                 f"archived codex mirror drifted: {name}")
-            else:
-                self.assertTrue(dest.is_file(), f"missing codex symlink record: {name}")
-                self.assertEqual(
-                    dest.read_text(encoding="utf-8"),
-                    f"retired codex symlink: .codex/skills/{name} -> ../../.agents/skills/{name}\n",
-                )
+        if expected_codex:
+            self.assertEqual(len(archive_days), 1,
+                             "semantic merge and finalize must share one archive date directory")
+            codex_archive = archive_days[0] / CODEX_ARCHIVE_CHILD
+            self.assertEqual({p.name for p in codex_archive.iterdir()}, set(engine.codex_seen))
+            for name in engine.codex_seen:
+                dest = codex_archive / name
+                if mode == "portable":
+                    prefix = f".agents/skills/{name}/"
+                    expected_files = {
+                        rel[len(prefix):]: digest
+                        for rel, digest in before.items() if rel.startswith(prefix)
+                    }
+                    archived_files = {
+                        path.relative_to(dest).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+                        for path in iter_regular_files(dest, strict=True)
+                    }
+                    self.assertEqual(archived_files, expected_files,
+                                     f"archived codex mirror drifted: {name}")
+                else:
+                    self.assertTrue(dest.is_file(), f"missing codex symlink record: {name}")
+                    self.assertEqual(
+                        dest.read_text(encoding="utf-8"),
+                        f"retired codex symlink: .codex/skills/{name} -> ../../.agents/skills/{name}\n",
+                    )
+        else:
+            self.assertEqual(archive_days, [],
+                             "a tool-neutral 1.1.9+ history must not produce codex archives")
         # Scaffold drift is allowed on exactly two classes of files: the ones
         # this fixture customized, and the index READMEs the entry migration
         # rewrote. The engine's own preserved set must equal the customized
@@ -1703,10 +1748,18 @@ class HistoricalUpgradeMatrixTests(unittest.TestCase):
                     if hasattr(module, "offer_official_support"):
                         module.offer_official_support = support
                     kwargs = {
-                        # Historical downloaders still address the old
-                        # FIXED_SOURCE URL; only the renamed 1.1.9 tool
-                        # downloads from DOWNLOAD_SOURCE.
-                        "transport": LocalTransport(self.prepared.source, expected=module.FIXED_SOURCE),
+                        # Historical downloaders before the rename address
+                        # the old FIXED_SOURCE URL; the renamed 1.1.9+ tools
+                        # download from DOWNLOAD_SOURCE while receipts keep
+                        # the FIXED_SOURCE identity.
+                        "transport": LocalTransport(
+                            self.prepared.source,
+                            expected=(
+                                module.FIXED_SOURCE
+                                if semver_tuple(version) < (1, 1, 9)
+                                else getattr(module, "DOWNLOAD_SOURCE", module.FIXED_SOURCE)
+                            ),
+                        ),
                         "parent": self.workspace / "historical-downloads" / f"{version}-{layout}",
                     }
                     if semver_tuple(version) >= (1, 1, 7):

@@ -31,12 +31,12 @@ description: "已装 PH 项目升到正式发行版的步骤：从唯一 GitHub 
 准备（下载在目标仓库外）：
 
 ```text
-python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.9 --repo <target>
+python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.10 --repo <target>
 ```
 
 stdout JSON 字段：`root` `version` `tag` `commit` `source`。`source` 是固定仓库 URL 字符串（1.x 仍为旧地址，保留兼容含义，不改写、不当错误）。本地已有该 commit 的检查不访问网络。准备成功后把脚本提示转告用户；没登录不拦升级。本会话刚用旧脚本 prepare 时，用发行根补跑 `python3 <release-root>/scripts/ph_release.py support`，不必为了加星再下一遍包。检查 / 同步仍然离线，不重新 prepare，也不为了加星上网。安装和以后升级仍从官方地址进行。
 
-**一次性入口切换**：旧版（1.1.7 及更早）用户级入口的 prepare 必查发行元数据里的 `schema_version`，会必然拒绝 1.1.8 及以后发行包；这是预期现象，不重试、不回退、不假称自动恢复。把首个无独立 Schema 版本的已发布标签 v1.1.8 clone 到一个**新的仓外安全目录**（如 `mktemp -d` 创建），不覆盖用户级入口与目标项目，不用 `main` 或本地开发树冒充发行；先在该目录运行 `python3 <新目录>/scripts/ph_release.py prepare --version 1.1.8` 并读取返回根的 Skill，再用这份新工具准备并固定目标 1.1.9 发行根。之后本文件全部升级命令都使用 1.1.9 prepare 返回的根，不再用旧目录或 v1.1.8 发行根冒充最终目标。1.1.8 及以后入口可直接准备 1.1.9。
+**一次性入口切换**：旧版（1.1.7 及更早）用户级入口的 prepare 必查发行元数据里的 `schema_version`，会必然拒绝 1.1.8 及以后发行包；这是预期现象，不重试、不回退、不假称自动恢复。把首个无独立 Schema 版本的已发布标签 v1.1.8 clone 到一个**新的仓外安全目录**（如 `mktemp -d` 创建），不覆盖用户级入口与目标项目，不用 `main` 或本地开发树冒充发行；先在该目录运行 `python3 <新目录>/scripts/ph_release.py prepare --version 1.1.8` 并读取返回根的 Skill，再用这份新工具准备并固定目标 1.1.10 发行根。之后本文件全部升级命令都使用 1.1.10 prepare 返回的根，不再用旧目录或 v1.1.8 发行根冒充最终目标。1.1.8 及以后入口可直接准备 1.1.10。
 
 同一次预检与写入复用这个 `root`。读该 root 的本 Skill 与 `migrations/`。升级工具在发行根，不在目标旧包：
 
@@ -101,7 +101,7 @@ python3 <release-root>/scripts/ph_merge_update.py finalize [--apply] --repo <tar
 4. **建或恢复清单**。读 `<release-root>/migrations/index.json` 与从 `from_version` 到目标的说明。已有 `state.json` 时对照文件实态：已落地不重做、不重复插入章节。版本已写成目标但 `report` / 项未完成 → 继续验收，不跳过。
 5. **按项合并**（用户确认后才写盘）。框架资产更新到目标态。AGENTS、规范、README 按段落合并，保留已填项目事实。业务文档只做迁移要求的调整，不改访谈原话、历史代码块、业务编号、无关 Wiki/记忆。init 会话中 subagent 生成的文档同样属于项目定制；不因升级重新生成 Wiki、全网调研或替换技术栈。新指引补缺与项目正文分开审阅，只有另行授权补全时才执行扩展调研。旧意图目录按完整链的最终迁移要求处理，不能仅按旧模板猜业务状态。
 6. **冲突**。与项目显式规则或本地定制相反 → 该项 `blocked`，停受影响写入，请用户决定。对用户说明“升级在这一项停住了”以及双方约定，问怎么处理；不要把项编号或内部状态名念给用户。旧 Skill 重命名退役须审阅备份；有定制不静默删。根 AGENTS 在而 canonical 不在、仓外软链、嵌套 symlink/junction、受跟踪 `.worktrees/`：fail-closed。
-7. **verify**。项无 `pending`/`blocked`，十 Skill 与目录实态符合目标，`report.md` 完整。不通过不 finalize。
+7. **verify**。项无 `pending`/`blocked`，必需 Skill 清单与目录实态符合目标，`report.md` 完整。不通过不 finalize。
 8. **finalize**。先 dry-run。用户确认后 `--apply`：对用户问“差异已经看过了，现在可以按这些改动写入吗”，不要问内部收尾命令。同步候选适配层（不改 mode），candidate check 通过前不改磁盘 `ph.json` 版本；通过后再写 `template_version` 并移除旧的 `schema_version` 字段（本版起不再有该键），再跑常规 `check`。新 schema 与自包含运行脚本须在第 5 步合并完成，verify 前已在磁盘上；finalize 不替换这些文件。失败保持 `in_progress`，不宣称完成。
 
 更新项目内 `ph-init` payload 用本次 `release-root`，保留该副本上的项目定制。`check` / `sync` 用项目已装内核，离线，不重新 `prepare`。
@@ -187,6 +187,16 @@ finalize 成功后清单删除 `adapters.codex_skills`，普通 check 不得再�
 同样读取 `<release-root>/migrations/1.1.8-to-1.1.9.md` 的 `repository-rename`。官方仓库由 `ph-init` 更名为 `project-harness`，产品名 Project Harness；技能名与安装路径不随仓库名变化，仍是 `ph-init` 与 `ph-*`，不迁移用户级入口、不重建技能目录。
 
 合并新 Skill 中的官方源说明，正式链接指向新仓库；项目文档如有引用官方源地址，一并更新为新地址。`receipt.source`、state 的 `source.repository`、`release.json.repository` 在 1.x 保留旧地址的兼容含义，存量值不改写、不当作错误；已发布迁移说明与历史升级记录中的旧地址保持原样。1.1.8 及以后入口按旧地址 prepare 也能取到新包，不是错误。
+
+## 1.1.10 文档同步 Skill 项
+
+读 `<release-root>/migrations/1.1.9-to-1.1.10.md`，从更早版本出发仍须读完整链。
+
+| id | 做完的样子 |
+| --- | --- |
+| `docs-sync-skill` | 新必需 Skill `ph-docs-sync` 已从发行根安装到 `.agents/skills/ph-docs-sync/`；`.agents/AGENTS.md` 技能表与 `docs/约束规范/工程规范/文档治理.md` §6、`初始化与文档补全.md` 的规则索引已合并指向该 Skill；**本项不自动同步任何业务文档**（README / docs / Wiki 的核验修复由用户另行发起 `ph-docs-sync`）；项目定制与 adapter mode 保留 |
+
+合并前核对 `.agents/skills/ph-docs-sync/`：旧版（1.1.9 及更早）不携带该 Skill，若项目已有**同名自定义 Skill**，本项 `blocked`，保留原件并请用户决定（改名保留或替换为官方版），不得覆盖；项目规则明确禁止自动修正文档或禁止新增 ph-* Skill 时同样 `blocked`。形态规整的同名目录由 `inspect` 列入冲突清单；无 `SKILL.md` 或含软链等异常形态会先被结构校验直接拒绝，两种路径都 fail-closed。
 
 ## 完成标准
 

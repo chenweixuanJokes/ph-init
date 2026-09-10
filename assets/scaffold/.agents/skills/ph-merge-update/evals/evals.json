@@ -72,6 +72,12 @@
       "prompt": "升级到 1.1.9 完成后，我翻 .agents/updates/1.1.9/state.json 和安装回执，source 还写着旧地址 chenweixuanJokes/ph-init.git。是不是升级没做干净，要不要手动改成新地址？",
       "expected_output": "不改：仓库更名后，state.source.repository、receipt.source、release.json.repository 在 1.x 保留旧地址的兼容含义，旧地址经 GitHub 重定向仍指向同一仓库，不代表升级未完成，也不要求手改。用日常用语解释两个地址等价、下载已由新工具走新地址；不动文件、不重跑升级。本 eval 不表示已实测。",
       "files": []
+    },
+    {
+      "id": 13,
+      "prompt": "把 PH 1.1.9 升到 1.1.10。升级前我们自己写过一个 .agents/skills/ph-docs-sync/，里面是团队定制的同步流程。顺便把我们过期的 README 也一起修了。",
+      "expected_output": "识别同名自定义 Skill：1.1.9 及更早不携带 ph-docs-sync，该目录是项目内容，inspect 会列出冲突；docs-sync-skill 项 blocked，保留原件并请用户决定改名保留或替换为官方版，不覆盖、不凭前缀放行，blocked 未解决不能 finalize、不写 template_version。升级只装 Skill 与规则索引，不自动同步业务文档：修 README 需用户在升级之外另行发起 ph-docs-sync。业务正文、项目定制与 adapter mode 保留。本 eval 不表示已实测。",
+      "files": []
     }
   ]
 }

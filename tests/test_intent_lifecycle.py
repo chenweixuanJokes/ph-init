@@ -33,6 +33,7 @@ REQUIRED_SKILLS = (
     "ph-init", "ph-worktree-enter", "ph-worktree-exit",
     "ph-memory-capture", "ph-memory-archive", "ph-memory-ask",
     "ph-intent-new", "ph-intent-impl", "ph-intent-drop", "ph-merge-update",
+    "ph-docs-sync",
 )
 STATUS_DIRS = (
     "docs/意图/待办/新特性", "docs/意图/待办/问题记录",

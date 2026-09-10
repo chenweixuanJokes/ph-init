@@ -57,8 +57,9 @@ class SkillContractTests(unittest.TestCase):
         cls.skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
 
     def test_batch_version_single_ph_version_contract(self):
-        self.assertIn("本批版本为 `1.1.9`", self.skill)
-        self.assertNotIn("1.1.1", self.skill)  # separate schema version is gone
+        self.assertIn("本批版本为 `1.1.10`", self.skill)
+        # separate schema version is gone; 1.1.10 must not trip the check
+        self.assertNotRegex(self.skill, r"1\.1\.1(?!0)")
         self.assertIn("urn:ph:schema:project-harness", self.skill)
         self.assertIn("不再有独立的 Schema 版本", self.skill)
 
@@ -70,7 +71,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("新的仓外安全目录", self.skill)
         self.assertIn("不覆盖用户级入口与目标项目", self.skill)
         self.assertIn("prepare --version 1.1.8", self.skill)
-        self.assertIn("目标 `1.1.9` 发行根", self.skill)
+        self.assertIn("目标 `1.1.10` 发行根", self.skill)
         # old schema_version field is removed only after finalize passes
         self.assertIn("仅在 finalize", self.skill)
 
@@ -80,6 +81,12 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("不另开技能", self.skill)
         self.assertNotIn("转交", self.skill)
         self.assertNotIn("转 merge-update", self.skill)
+
+    def test_docs_sync_routed_away_from_init(self):
+        # ph-docs-sync is a separate skill: check-only doc verification, not init
+        self.assertIn("ph-docs-sync", self.skill)
+        self.assertIn("文档与代码一致性核验", self.skill)
+        self.assertIn("检查默认只读", self.skill)
 
     def test_mode_default_auto_for_new_installs(self):
         mode_lines = [line for line in self.skill.splitlines() if "--mode" in line]
@@ -118,11 +125,12 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn(".claude/skills/", self.skill)
         self.assertIn("原生读取 `.agents/skills`", self.skill)
 
-    def test_ten_distributed_skills_share_strict_frontmatter_subset(self):
+    def test_eleven_distributed_skills_share_strict_frontmatter_subset(self):
         release = json.loads((ROOT / "release.json").read_text(encoding="utf-8"))
         required = release["required_skills"]
-        self.assertEqual(len(required), 10)
-        # the root SKILL.md is the tenth slot; the other nine live in scaffold
+        self.assertEqual(len(required), 11)
+        self.assertIn("ph-docs-sync", required)
+        # the root SKILL.md is the ph-init slot; the other ten live in scaffold
         slots = {
             "ph-init": ROOT / "SKILL.md",
             **{
@@ -311,6 +319,11 @@ class EntryPointsTests(unittest.TestCase):
         self.assertIn("归并", self.agents)
         self.assertNotIn("保留原位", self.agents)
         self.assertIn(".agents/archived", self.agents)
+
+    def test_canonical_agents_skill_table_registers_docs_sync(self):
+        self.assertIn("十一名固定", self.agents)
+        self.assertIn("ph-docs-sync", self.agents)
+        self.assertIn("只读", self.agents)
 
 
 class EvalsCoverageTests(unittest.TestCase):
