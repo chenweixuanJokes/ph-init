@@ -27,8 +27,9 @@ import ph_release  # noqa: E402
 
 TRASH_ROOT = Path.home() / "trash"
 FIXED_SOURCE = ph_release.FIXED_SOURCE
+DOWNLOAD_SOURCE = ph_release.DOWNLOAD_SOURCE
 SCHEMA_ID = ph_release.SCHEMA_ID
-CURRENT_VERSION = "1.1.8"
+CURRENT_VERSION = "1.1.9"
 LEGACY_VERSION = "1.1.7"
 DEFAULT_SKILLS = [
     "ph-init",
@@ -298,8 +299,32 @@ class PhReleaseTests(unittest.TestCase):
         self.assertTrue((prepared.root / "scripts/ph_init.py").is_file())
         self.assertTrue((prepared.root / "SKILL.md").is_file())
         self.assertTrue((prepared.root / "migrations/1.1.0-to-1.1.1.md").is_file())
-        self.assertEqual(transport.ls_calls, [FIXED_SOURCE])
-        self.assertEqual(transport.fetch_calls[0][:2], (FIXED_SOURCE, commit))
+        self.assertEqual(transport.ls_calls, [DOWNLOAD_SOURCE])
+        self.assertEqual(transport.fetch_calls[0][:2], (DOWNLOAD_SOURCE, commit))
+
+    def test_download_uses_new_source_but_keeps_fixed_identity(self):
+        files = self.release_files()
+        transport, commit = self.transport_for(files)
+        prepared = self.prepare(transport, "latest")
+        self.assertNotEqual(DOWNLOAD_SOURCE, FIXED_SOURCE)
+        self.assertEqual(transport.ls_calls, [DOWNLOAD_SOURCE])
+        self.assertEqual(transport.fetch_calls[0][:2], (DOWNLOAD_SOURCE, commit))
+        self.assertEqual(prepared.source, FIXED_SOURCE)
+        receipt = json.loads((prepared.root / ".ph-source.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["source"], FIXED_SOURCE)
+        meta = json.loads((prepared.root / "release.json").read_text(encoding="utf-8"))
+        self.assertEqual(meta["repository"], FIXED_SOURCE)
+
+    def test_new_downloader_accepts_pre_rename_tag(self):
+        files = self.release_files("1.1.8")
+        transport, commit = self.transport_for(files, version="1.1.8")
+        prepared = self.prepare(transport, "1.1.8")
+        self.assertEqual(prepared.tag, "v1.1.8")
+        self.assertEqual(prepared.source, FIXED_SOURCE)
+        self.assertEqual(transport.ls_calls, [DOWNLOAD_SOURCE])
+        self.assertEqual(transport.fetch_calls[0][:2], (DOWNLOAD_SOURCE, commit))
+        meta = json.loads((prepared.root / "release.json").read_text(encoding="utf-8"))
+        self.assertEqual(meta["repository"], FIXED_SOURCE)
 
     def test_explicit_version_uses_matching_tag(self):
         files_old = self.legacy_release_files(LEGACY_VERSION)
@@ -523,7 +548,7 @@ class PhReleaseTests(unittest.TestCase):
     def test_network_failure_does_not_fallback(self):
         transport = DictTransport(
             ls_error=ph_release.PHReleaseError(
-                f"network failure talking to {FIXED_SOURCE}: could not resolve host"
+                f"network failure talking to {DOWNLOAD_SOURCE}: could not resolve host"
             )
         )
         with self.assertRaises(ph_release.PHReleaseError) as ctx:
@@ -536,7 +561,7 @@ class PhReleaseTests(unittest.TestCase):
         transport, _ = self.transport_for(files)
         transport.fetch_error = ph_release.PHReleaseError(
             "git fetch --no-tags --depth=1 --no-recurse-submodules -- "
-            f"{FIXED_SOURCE} abc timed out after 60s"
+            f"{DOWNLOAD_SOURCE} abc timed out after 60s"
         )
         with self.assertRaises(ph_release.PHReleaseError) as ctx:
             self.prepare(transport, CURRENT_VERSION)
@@ -656,12 +681,12 @@ class PhReleaseTests(unittest.TestCase):
 
         class LocalTransport(ph_release.GitTransport):
             def ls_remote_tags(self, source_url):
-                if source_url != FIXED_SOURCE:
+                if source_url != DOWNLOAD_SOURCE:
                     raise ph_release.PHReleaseError(f"unexpected source {source_url}")
                 return run(["git", "ls-remote", "--tags", str(source)], cwd=source).stdout
 
             def fetch_commit(self, source_url, want, dest):
-                if source_url != FIXED_SOURCE:
+                if source_url != DOWNLOAD_SOURCE:
                     raise ph_release.PHReleaseError(f"unexpected source {source_url}")
                 dest.mkdir(parents=True, exist_ok=True)
                 (dest / "FETCH_HEAD").write_text(want + "\n", encoding="utf-8")
@@ -710,12 +735,12 @@ class PhReleaseTests(unittest.TestCase):
         self.assertEqual(manifest["schema_version"], "1.1.1")
         self.assertEqual(schema["$id"], "urn:ph:schema:project-harness:1.1.1")
 
-    def test_future_1_1_9_can_add_skill_and_prepare(self):
+    def test_future_1_1_10_can_add_skill_and_prepare(self):
         skills = [*DEFAULT_SKILLS, "ph-future-skill"]
-        files = self.release_files("1.1.9", skills=skills)
-        transport, _ = self.transport_for(files, version="1.1.9")
-        prepared = self.prepare(transport, "1.1.9")
-        self.assertEqual(prepared.version, "1.1.9")
+        files = self.release_files("1.1.10", skills=skills)
+        transport, _ = self.transport_for(files, version="1.1.10")
+        prepared = self.prepare(transport, "1.1.10")
+        self.assertEqual(prepared.version, "1.1.10")
         self.assertTrue(
             (prepared.root / "assets/scaffold/.agents/skills/ph-future-skill/SKILL.md").is_file()
         )
@@ -909,6 +934,114 @@ class PhReleaseTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("官方地址不用再下一次", stderr.getvalue())
 
+    def test_ensure_star_targets_new_official_name(self):
+        session = ScriptedApiSupport(
+            {
+                "GET /user/starred/chenweixuanJokes/project-harness": ph_release.SupportActionError(
+                    "missing", status=404
+                ),
+                "PUT /user/starred/chenweixuanJokes/project-harness": {},
+            }
+        )
+        self.assertTrue(session.ensure_star("alice"))
+        self.assertEqual(
+            session.calls,
+            [
+                ("GET", "/user/starred/chenweixuanJokes/project-harness"),
+                ("PUT", "/user/starred/chenweixuanJokes/project-harness"),
+            ],
+        )
+
+    def test_ensure_copy_reuses_fork_under_new_name(self):
+        session = ScriptedApiSupport(
+            {
+                "GET /repos/alice/project-harness": {
+                    "fork": True,
+                    "parent": {"full_name": "chenweixuanJokes/project-harness"},
+                    "html_url": "https://github.com/alice/project-harness",
+                },
+            }
+        )
+        url, created = session.ensure_copy("alice")
+        self.assertFalse(created)
+        self.assertEqual(url, "https://github.com/alice/project-harness")
+        self.assertEqual(session.calls, [("GET", "/repos/alice/project-harness")])
+
+    def test_ensure_copy_reuses_fork_under_old_name(self):
+        session = ScriptedApiSupport(
+            {
+                "GET /repos/alice/project-harness": ph_release.SupportActionError(
+                    "missing", status=404
+                ),
+                "GET /repos/alice/ph-init": {
+                    "fork": True,
+                    "parent": {"full_name": "chenweixuanJokes/project-harness"},
+                    "html_url": "https://github.com/alice/ph-init",
+                },
+            }
+        )
+        url, created = session.ensure_copy("alice")
+        self.assertFalse(created)
+        self.assertEqual(url, "https://github.com/alice/ph-init")
+        self.assertEqual(
+            session.calls,
+            [
+                ("GET", "/repos/alice/project-harness"),
+                ("GET", "/repos/alice/ph-init"),
+            ],
+        )
+
+    def test_ensure_copy_rejects_unrelated_same_name_repos(self):
+        fork_created = {"html_url": "https://github.com/alice/project-harness"}
+        not_a_fork = ScriptedApiSupport(
+            {
+                "GET /repos/alice/project-harness": {
+                    "fork": False,
+                    "html_url": "https://github.com/alice/project-harness",
+                },
+                "GET /repos/alice/ph-init": ph_release.SupportActionError("missing", status=404),
+                "POST /repos/chenweixuanJokes/project-harness/forks": fork_created,
+            }
+        )
+        url, created = not_a_fork.ensure_copy("alice")
+        self.assertTrue(created)
+        self.assertEqual(url, "https://github.com/alice/project-harness")
+        self.assertEqual(
+            not_a_fork.calls,
+            [
+                ("GET", "/repos/alice/project-harness"),
+                ("GET", "/repos/alice/ph-init"),
+                ("POST", "/repos/chenweixuanJokes/project-harness/forks"),
+            ],
+        )
+
+        wrong_parent = ScriptedApiSupport(
+            {
+                "GET /repos/alice/project-harness": {
+                    "fork": True,
+                    "parent": {"full_name": "someone-else/unrelated"},
+                    "html_url": "https://github.com/alice/project-harness",
+                },
+                "GET /repos/alice/ph-init": {
+                    "fork": True,
+                    "parent": {"full_name": "someone-else/unrelated"},
+                    "html_url": "https://github.com/alice/ph-init",
+                },
+                "POST /repos/chenweixuanJokes/project-harness/forks": fork_created,
+            }
+        )
+        url, created = wrong_parent.ensure_copy("alice")
+        self.assertTrue(created)
+        self.assertEqual(url, "https://github.com/alice/project-harness")
+        self.assertEqual(
+            wrong_parent.calls,
+            [
+                ("GET", "/repos/alice/project-harness"),
+                ("GET", "/repos/alice/ph-init"),
+                ("POST", "/repos/chenweixuanJokes/project-harness/forks"),
+            ],
+        )
+
     def test_github_request_redacts_token_from_errors(self):
         def fake_urlopen(request, timeout=None):
             self.assertIn("Bearer secret-token", request.get_header("Authorization"))
@@ -957,3 +1090,19 @@ class RecordingSupport(ph_release.GithubSession):
         if self.error == "copy":
             raise ph_release.SupportActionError("copy failed")
         return self.copy_url, self.copy_created
+
+
+class ScriptedApiSupport(ph_release.GithubSession):
+    # _api is replaced by a scripted response table. Keys are "METHOD path"
+    # strings; values are payload dicts or exceptions to raise. Every call is
+    # recorded, and a call without a scripted answer fails the test.
+    def __init__(self, responses):
+        self.responses = responses
+        self.calls = []
+
+    def _api(self, method, path, *, empty_body=False):
+        self.calls.append((method, path))
+        result = self.responses[f"{method} {path}"]
+        if isinstance(result, Exception):
+            raise result
+        return result

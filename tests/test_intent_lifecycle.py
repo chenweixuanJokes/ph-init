@@ -17,11 +17,17 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PH_INIT = REPO_ROOT / "scripts" / "ph_init.py"
 SCAFFOLD = REPO_ROOT / "assets" / "scaffold"
 TRASH_ROOT = Path.home() / "trash"
+
+if str(REPO_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+import ph_init  # noqa: E402
 MD_LINK = re.compile(r"(?<!!)\[.*?\]\(([^)]+)\)")
 REQUIRED_SKILLS = (
     "ph-init", "ph-worktree-enter", "ph-worktree-exit",
@@ -132,15 +138,23 @@ class IntentLifecycleTests(unittest.TestCase):
 
     def init_apply(self, prefix, mode="portable", script=None):
         repo = self.git_repo(prefix)
-        self.assert_ok(ph(repo, "init", "--apply", "--mode", mode, script=script),
-                       action="init", mode=mode, apply="true")
+        args = ("init", "--apply") if mode is None else ("init", "--apply", "--mode", mode)
+        expect = {"action": "init", "apply": "true"}
+        if mode is not None:
+            # An explicit mode is echoed back verbatim; mode=None leaves the
+            # auto default, and the caller asserts the resolved value.
+            expect["mode"] = mode
+        self.assert_ok(ph(repo, *args, script=script), **expect)
         return repo
 
     def assert_layout(self, repo):
         for name in REQUIRED_SKILLS:
             self.assertTrue((repo / ".agents/skills" / name / "SKILL.md").is_file(), name)
             self.assertTrue((repo / ".claude/skills" / name / "SKILL.md").exists(), name)
-            self.assertTrue((repo / ".codex/skills" / name / "SKILL.md").exists(), name)
+        # Codex and OpenCode read AGENTS.md and .agents/skills natively:
+        # the minimal adapter topology creates no vendor directory for them.
+        self.assertFalse((repo / ".codex").exists())
+        self.assertFalse((repo / ".opencode").exists())
         for rel in STATUS_DIRS:
             self.assertTrue((repo / rel / "README.md").is_file(), rel)
         self.assertFalse((repo / "docs/意图/进行中").exists())
@@ -219,16 +233,15 @@ class IntentLifecycleTests(unittest.TestCase):
         self.assertEqual((portable / "CLAUDE.md").read_bytes(), b"@.agents/AGENTS.md\n")
         for name in REQUIRED_SKILLS:
             src = portable / ".agents/skills" / name
-            for vendor in (".claude", ".codex"):
-                dest = portable / vendor / "skills" / name
-                self.assertFalse(dest.is_symlink(), dest)
-                self.assertEqual(tree(src), tree(dest), dest)
+            dest = portable / ".claude/skills" / name
+            self.assertFalse(dest.is_symlink(), dest)
+            self.assertEqual(tree(src), tree(dest), dest)
         symlink = self.init_apply("ph-intent-rel-", "symlink")
         pairs = [(symlink / "AGENTS.md", symlink / ".agents/AGENTS.md"),
                  (symlink / "CLAUDE.md", symlink / ".agents/AGENTS.md")]
         for name in REQUIRED_SKILLS:
             src = symlink / ".agents/skills" / name
-            pairs += [(symlink / ".claude/skills" / name, src), (symlink / ".codex/skills" / name, src)]
+            pairs.append((symlink / ".claude/skills" / name, src))
         for dest, target in pairs:
             self.assertTrue(dest.is_symlink(), dest)
             raw = os.readlink(dest)
@@ -264,10 +277,161 @@ class IntentLifecycleTests(unittest.TestCase):
         installed = first / ".agents/skills/ph-init/scripts/ph_init.py"
         self.assertTrue(installed.is_file())
         self.assertTrue((first / ".agents/skills/ph-init/assets/scaffold").is_dir())
-        second = self.init_apply("ph-intent-second-", script=installed)
+        # Default (auto) install through the installed copy: apply resolves a
+        # concrete mode, so the report never claims mode=auto after writing.
+        second = self.init_apply("ph-intent-second-", mode=None, script=installed)
         self.assert_layout(second)
         self.assertTrue((second / ".agents/skills/ph-init/scripts/ph_init.py").is_file())
-        self.assert_ok(ph(second, "check", "--mode", "portable", script=installed), action="check", mode="portable")
+        manifest = json.loads((second / ".agents" / "ph.json").read_text(encoding="utf-8"))
+        self.assertIn(manifest["adapter_mode"], ("portable", "symlink"))
+        self.assertEqual(sorted(manifest["adapters"]), ["claude_entry", "claude_skills", "root_agents"])
+        self.assert_ok(
+            ph(second, "check", script=installed),
+            action="check",
+            mode=manifest["adapter_mode"],
+            apply="false",
+        )
+
+    # -- auto mode and the minimal three-tool adapter topology ----------------
+
+    def test_auto_dry_run_writes_nothing_and_defers_resolution(self):
+        repo = self.git_repo("ph-intent-autodry-")
+        before = tree(repo)
+        dry = ph(repo, "init")
+        self.assert_ok(dry, action="init", mode="auto", apply="false")
+        self.assertIn("auto mode: symlink vs portable is resolved at apply time", dry.stdout)
+        self.assertIn("if portable:", dry.stdout)
+        self.assertIn("if symlink:", dry.stdout)
+        self.assertIn("\t.agents/ph.json\t", dry.stdout)
+        self.assertIn("\t.claude/skills", dry.stdout)
+        # Read-only also means no destination-filesystem probe and no writes.
+        self.assertEqual(tree(repo), before)
+        self.assertFalse((repo / ".claude").exists())
+        self.assertFalse(any(p.name.startswith(".ph-link-probe-") for p in repo.iterdir()))
+
+    def test_auto_mode_prefers_symlink_when_supported(self):
+        repo = self.git_repo("ph-intent-autolink-")
+        if ph_init.symlink_blocker(repo):
+            self.skipTest("this filesystem or git cannot keep real symlinks")
+        applied = ph(repo, "init", "--apply")
+        self.assert_ok(applied, action="init", mode="symlink", apply="true")
+        self.assertTrue((repo / "AGENTS.md").is_symlink())
+        manifest = json.loads((repo / ".agents" / "ph.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["adapter_mode"], "symlink")
+        self.assertEqual(sorted(manifest["adapters"]), ["claude_entry", "claude_skills", "root_agents"])
+        self.assert_layout(repo)
+        self.assert_ok(ph(repo, "check"), action="check", mode="symlink", apply="false")
+
+    def test_auto_mode_downgrades_to_portable_when_core_symlinks_false(self):
+        repo = self.git_repo("ph-intent-autofalse-")
+        proc = run(["git", "config", "core.symlinks", "false"], cwd=repo)
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+        applied = ph(repo, "init", "--apply")
+        self.assert_ok(applied, action="init", mode="portable", apply="true")
+        # The downgrade reason is an explicit report item, not a silent pick.
+        self.assertIn(
+            "auto mode: symlink unavailable (git core.symlinks is explicitly false); installing portable",
+            applied.stdout,
+        )
+        self.assertFalse((repo / "AGENTS.md").is_symlink())
+        self.assertEqual((repo / "CLAUDE.md").read_bytes(), b"@.agents/AGENTS.md\n")
+        self.assert_ok(ph(repo, "check"), action="check", mode="portable", apply="false")
+
+    def test_auto_mode_downgrades_when_os_symlink_probe_fails(self):
+        repo = self.git_repo("ph-intent-osfail-")
+        report = ph_init.Report("init", "auto", True)
+        with mock.patch.object(ph_init.os, "symlink", side_effect=OSError("no links here")):
+            mode = ph_init.resolve_auto_mode(report, repo)
+        self.assertEqual(mode, "portable")
+        reasons = [item.reason for item in report.items]
+        self.assertTrue(any("os.symlink failed" in reason for reason in reasons), reasons)
+
+    def test_explicit_symlink_mode_fails_hard_when_core_symlinks_false(self):
+        repo = self.git_repo("ph-intent-strict-")
+        proc = run(["git", "config", "core.symlinks", "false"], cwd=repo)
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+        # A dry run never probes, so explicit symlink stays ok until apply.
+        before = tree(repo)
+        self.assert_ok(ph(repo, "init", "--mode", "symlink"), action="init", mode="symlink", apply="false")
+        self.assertEqual(tree(repo), before)
+        applied = ph(repo, "init", "--apply", "--mode", "symlink")
+        self.assertNotEqual(applied.returncode, 0, applied.stdout)
+        self.assertEqual(fields(applied.stdout).get("status"), "error", applied.stdout)
+        self.assertIn("item=block\t.", applied.stdout)
+        self.assertIn("core.symlinks", applied.stdout)
+        self.assertEqual(tree(repo), before, "blocked symlink apply must write nothing")
+
+    def test_installed_portable_repo_locks_mode_against_auto_default(self):
+        repo = self.init_apply("ph-intent-locked-")
+        # The auto default must follow the repository's locked portable mode,
+        # never convert it, and an explicit symlink keeps being refused.
+        again = ph(repo, "init", "--apply")
+        self.assert_ok(again, action="init", mode="portable", apply="true")
+        self.assertFalse((repo / "AGENTS.md").is_symlink())
+        self.assertFalse((repo / "CLAUDE.md").is_symlink())
+        refused = ph(repo, "init", "--apply", "--mode", "symlink")
+        self.assertNotEqual(refused.returncode, 0, refused.stdout + refused.stderr)
+        self.assertIn("locked", refused.stderr, refused.stderr)
+        self.assert_ok(ph(repo, "check"), action="check", mode="portable", apply="false")
+
+    def test_auto_conflicting_adapter_parent_blocks_before_probe(self):
+        repo = self.git_repo("ph-auto-parent-")
+        (repo / ".claude").mkdir()
+        (repo / ".claude/skills").write_text("user content\n")
+        before = tree(repo)
+        with mock.patch.object(ph_init, "symlink_blocker", side_effect=AssertionError("must not probe")):
+            for apply in (False, True):
+                result = ph_init.cmd_init(repo, "auto", apply)
+                self.assertTrue(result.blocked)
+                self.assertIn("skill adapter parent", result.render())
+        self.assertEqual(tree(repo), before)
+
+    def test_directory_link_probe_failure_falls_back_before_install(self):
+        repo = self.git_repo("ph-auto-directory-")
+        real_symlink = os.symlink
+
+        def files_only(src, dst, target_is_directory=False, **kwargs):
+            if target_is_directory:
+                raise OSError("directory links disabled")
+            return real_symlink(src, dst, target_is_directory=target_is_directory, **kwargs)
+
+        with mock.patch.object(ph_init, "skill_root", return_value=self._source), \
+                mock.patch.object(ph_init.os, "symlink", side_effect=files_only):
+            result = ph_init.cmd_init(repo, "auto", True)
+        self.assertFalse(result.blocked, result.render())
+        self.assertEqual(result.mode, "portable")
+        self.assertIn("directory links disabled", result.render())
+        self.assertFalse((repo / "AGENTS.md").is_symlink())
+        self.assertFalse(any(p.name.startswith(".ph-link-probe-") for p in repo.iterdir()))
+
+    def test_apply_directory_symlink_passes_windows_flag(self):
+        repo = self.git_repo("ph-directory-flag-")
+        target = repo / "skill"
+        target.mkdir()
+        with mock.patch.object(Path, "symlink_to") as create:
+            ph_init.apply_one_symlink(repo / "adapter", target, repo)
+        create.assert_called_once_with("skill", target_is_directory=True)
+
+    def test_check_reports_retired_codex_but_preserves_user_skills(self):
+        repo = self.init_apply("ph-check-codex-")
+        root = repo / ".codex/skills"
+        root.mkdir(parents=True)
+        (root / "my-tool").mkdir()
+        self.assert_ok(ph(repo, "check"))
+        legacy = root / "ph-init"
+        legacy.symlink_to("../../.agents/skills/ph-init", target_is_directory=True)
+        before = tree(repo)
+        checked = ph(repo, "check")
+        self.assertNotEqual(checked.returncode, 0)
+        self.assertIn("retired Codex PH adapter", checked.stdout)
+        self.assertEqual(tree(repo), before)
+
+    def test_zcode_skills_directory_no_longer_blocks_check(self):
+        repo = self.init_apply("ph-intent-zcode-")
+        (repo / ".zcode" / "skills").mkdir(parents=True)
+        checked = ph(repo, "check", "--mode", "portable")
+        self.assert_ok(checked, action="check", mode="portable", apply="false")
+        self.assertNotIn(".zcode/skills", checked.stdout)
 
 
 if __name__ == "__main__":

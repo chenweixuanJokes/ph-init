@@ -51,14 +51,26 @@
     },
     {
       "id": 9,
-      "prompt": "已装项目要升到 1.1.8，但用户级 ph-init 入口还是旧版，prepare 报 illegal release.json: missing schema_version。帮忙继续升级。",
-      "expected_output": "识别为旧入口必然拒绝新包的预期现象，不当作网络故障重试，不回退，不假称自动恢复。按一次性入口切换：向用户说明并确认后，把官方稳定标签 v1.1.8 clone 到新的仓外安全目录，不覆盖用户级入口与目标项目，不用 main 或本地开发树冒充；用新目录 prepare --version 1.1.8，之后 inspect → 语义合并 → verify → finalize 都用该发行根。不对已装项目 init --apply。finalize 通过后项目清单不再含 schema_version，template_version 写 1.1.8，schema $id 为无版本标识；业务正文与未完成记录保留。本 eval 不表示已实测。",
+      "prompt": "已装项目要升到 1.1.9，但用户级 ph-init 入口还是 1.1.7，prepare 报 illegal release.json: missing schema_version。帮忙继续升级。",
+      "expected_output": "识别为旧入口必然拒绝 1.1.8 及以后包的预期现象，不当作网络故障重试，不回退，不假称自动恢复。按一次性入口切换：把已发布 v1.1.8 clone 到新的仓外安全目录，不覆盖用户级入口与目标项目，不用 main 或本地开发树冒充；先用新目录 prepare --version 1.1.8 并读取返回根的 Skill，再由这份新工具准备并固定 1.1.9。之后 inspect → 语义合并 → verify → finalize 都用 1.1.9 发行根。不对已装项目 init --apply。finalize 通过后项目清单不再含 schema_version，template_version 写 1.1.9，schema $id 为无版本标识；业务正文与未完成记录保留。本 eval 不表示已实测。",
       "files": []
     },
     {
       "id": 10,
       "prompt": "升级完成后我检查 .agents/ph.json，里面没有 schema_version 字段了，这是不是升级出了问题？",
       "expected_output": "不是问题：1.1.8 起彻底取消独立 Schema 版本，项目清单只有 template_version 一个版本字段，schema 标识固定为无版本的 urn:ph:schema:project-harness。用日常用语向用户解释，不动文件、不重跑升级；若项目内其他工具依赖旧字段才按冲突流程记录处理。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 11,
+      "prompt": "把 portable 模式的 PH 1.1.8 升到 1.1.9。我们同时使用 Claude Code、Codex 和 OpenCode，.codex/skills/ph-memory-ask 有本地改动，旁边还有 my-tool。",
+      "expected_output": "保留 portable，不把升级当作模式转换。登记 worktree-auto-branch、tool-neutral-adapters 与 repository-rename；Codex/OpenCode 使用 canonical，Claude 保留适配入口。先保存迁移前摘要，对 ph-memory-ask 定制标冲突并保持原位，不能仅凭 ph-* 名称退役；my-tool 不动。官方源说明合并到新仓库 project-harness，state 与 receipt 里的旧地址来源值保留兼容含义、不改写。未经审阅合并和归档不能 finalize。可证明受管的其他入口只在 finalize --apply 中自动归档，最终版本只在验收后写入。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 12,
+      "prompt": "升级到 1.1.9 完成后，我翻 .agents/updates/1.1.9/state.json 和安装回执，source 还写着旧地址 chenweixuanJokes/ph-init.git。是不是升级没做干净，要不要手动改成新地址？",
+      "expected_output": "不改：仓库更名后，state.source.repository、receipt.source、release.json.repository 在 1.x 保留旧地址的兼容含义，旧地址经 GitHub 重定向仍指向同一仓库，不代表升级未完成，也不要求手改。用日常用语解释两个地址等价、下载已由新工具走新地址；不动文件、不重跑升级。本 eval 不表示已实测。",
       "files": []
     }
   ]

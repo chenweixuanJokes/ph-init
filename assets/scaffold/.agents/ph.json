@@ -1,6 +1,6 @@
 {
   "$schema": "./ph.schema.json",
-  "template_version": "1.1.8",
+  "template_version": "1.1.9",
   "adapter_mode": "portable",
   "canonical": {
     "root": ".agents",
@@ -24,12 +24,6 @@
     "claude_skills": {
       "mode": "mirror_tree",
       "path": ".claude/skills",
-      "source": ".agents/skills",
-      "include": "ph-*"
-    },
-    "codex_skills": {
-      "mode": "mirror_tree",
-      "path": ".codex/skills",
       "source": ".agents/skills",
       "include": "ph-*"
     }

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """PH bootstrapper: install, check, and sync a repository-local Project Harness.
 
-Why a dedicated tool instead of ZCode /init or vendor scaffolds: those tools
-own a different layout and would fork `.agents/`. This script is the only
-writer for PH adapters. It is self-contained after install — runtime assets
-live next to this file, never at a proposal-repo absolute path.
+Codex and OpenCode read AGENTS.md and `.agents/skills` natively, so only the
+Claude entry points need adapters. This script is the only writer for those
+adapters. It is self-contained after install — runtime assets live next to
+this file, never at a proposal-repo absolute path.
 
 No third-party deps. No schema upgrade / history migration.
 """
@@ -27,6 +27,9 @@ from typing import Iterable
 
 ACTIONS = ("init", "check", "sync")
 MODES = ("portable", "symlink")
+# `auto` exists only as a CLI request for a fresh install: it is never
+# persisted to the manifest and resolves to a concrete mode at apply time.
+CLI_MODES = ("auto", "portable", "symlink")
 CLAUDE_STUB = "@.agents/AGENTS.md\n"
 PH_GITIGNORE_ENTRY = "/.worktrees/"
 PH_GITIGNORE_BLOCK = (
@@ -382,13 +385,12 @@ def validate_manifest(data: dict) -> None:
             ".agents/skills",
             "ph-*",
         ),
-        "codex_skills": (
-            "mirror_tree" if mode == "portable" else "symlink",
-            ".codex/skills",
-            ".agents/skills",
-            "ph-*",
-        ),
     }
+    if set(adapters) != set(specs):
+        raise PHError(
+            "illegal manifest: adapters must contain only root_agents, "
+            "claude_entry, and claude_skills"
+        )
     for name, (expected_mode, path, source, include) in specs.items():
         adapter = _need(adapters, name, "adapters")
         if not isinstance(adapter, dict):
@@ -510,10 +512,16 @@ def load_repo_manifest(repo: Path, *, candidate: dict | None = None) -> dict:
         expected.pop("schema_version", None)
         expected["template_version"] = RELEASE_VERSION
         expected["skills"] = dict(actual.get("skills", {}), required_names=list(REQUIRED_SKILLS))
+        # Upgrading a pre-1.1.9 manifest additionally removes the retired
+        # codex_skills adapter. The target candidate must use that minimal
+        # three-adapter topology; every other difference stays a rejection.
+        expected["adapters"] = dict(actual.get("adapters") or {})
+        expected["adapters"].pop("codex_skills", None)
         if candidate != expected:
             raise PHError(
                 "candidate may change only template_version and required skills, "
-                "and may only delete the removed schema_version field"
+                "and may only delete the removed schema_version field "
+                "and the removed adapters.codex_skills adapter"
             )
     validate_manifest(data)
     ensure_canonical_layout(repo)
@@ -545,10 +553,8 @@ def infer_mode(repo: Path) -> str | None:
         votes.add("symlink")
     elif claude.is_file():
         votes.add("portable")
-    for vendor in (".claude", ".codex"):
-        skill_probe = repo / vendor / "skills"
-        if not skill_probe.is_dir():
-            continue
+    skill_probe = repo / ".claude" / "skills"
+    if skill_probe.is_dir():
         for child in skill_probe.iterdir():
             if not child.name.startswith("ph-"):
                 continue
@@ -564,6 +570,14 @@ def infer_mode(repo: Path) -> str | None:
 
 
 def resolve_mode(repo: Path, requested: str | None, action: str) -> str:
+    """Resolve the requested mode against the repository's locked state.
+
+    A manifest's `adapter_mode` only ever persists a concrete portable or
+    symlink choice. `auto` is a CLI-only request: an installed (or otherwise
+    locked) repository keeps its declared/inferred mode regardless, and only a
+    fresh install defers the choice to apply time.
+    """
+
     ensure_canonical_root(repo)
     manifest_path = repo / ".agents" / "ph.json"
     declared: str | None = None
@@ -579,12 +593,14 @@ def resolve_mode(repo: Path, requested: str | None, action: str) -> str:
         raise PHError(
             f"manifest declares {declared} but adapters look like {inferred}; run check before repair"
         )
-    if requested and locked and requested != locked:
+    if requested not in (None, "auto") and locked and requested != locked:
         raise PHError(
             f"repository mode is locked to {locked}; refusing to {action} as {requested}. "
             "PH does not migrate modes."
         )
-    return requested or locked or "portable"
+    if locked:
+        return locked
+    return requested or "auto"
 
 
 def gitignore_has_entry(text: str) -> bool:
@@ -871,21 +887,20 @@ def ph_init_payload_files() -> list[Path]:
 
 
 def plan_payload_mirrors(report: Report, repo: Path) -> None:
-    """Plan Claude/Codex mirrors for ph-init using the self-install payload only."""
+    """Plan the Claude mirror for ph-init using the self-install payload only."""
 
     src_root = skill_root()
     files = ph_init_payload_files()
-    for vendor in (".claude", ".codex"):
-        rel = f"{vendor}/skills/ph-init"
-        plan_file_set_copy(
-            report,
-            repo,
-            src_root,
-            files,
-            repo / rel,
-            rel,
-            "portable skill mirror",
-        )
+    rel = ".claude/skills/ph-init"
+    plan_file_set_copy(
+        report,
+        repo,
+        src_root,
+        files,
+        repo / rel,
+        rel,
+        "portable skill mirror",
+    )
 
 
 def assert_scaffold_not_recursive() -> None:
@@ -967,9 +982,9 @@ def manifest_bytes_for_mode(mode: str) -> bytes:
     data["adapters"]["claude_entry"]["mode"] = (
         "import_stub" if mode == "portable" else "symlink"
     )
-    skills_mode = "mirror_tree" if mode == "portable" else "symlink"
-    data["adapters"]["claude_skills"]["mode"] = skills_mode
-    data["adapters"]["codex_skills"]["mode"] = skills_mode
+    data["adapters"]["claude_skills"]["mode"] = (
+        "mirror_tree" if mode == "portable" else "symlink"
+    )
     validate_manifest(data)
     return (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
@@ -1309,6 +1324,11 @@ def plan_scaffold(report: Report, repo: Path, mode: str, *, skip_rels: frozenset
             continue  # gitignore is marker-idempotent, not a whole-file replace
         if rel in skip_rels:
             continue  # the adopt plan supplies the reviewed content for this path
+        if rel == ".agents/ph.json" and mode == "auto":
+            # The manifest persists only a concrete portable/symlink choice;
+            # an unresolved auto dry run cannot render it without probing the
+            # destination filesystem, so it is planned and written at apply.
+            continue
         data = manifest_bytes_for_mode(mode) if rel == ".agents/ph.json" else src.read_bytes()
         dest = repo / rel
         if rel == ADOPT_CANONICAL:
@@ -1396,9 +1416,8 @@ def adapter_skill_pairs(repo: Path) -> list[tuple[Path, Path, str]]:
     pairs = []
     for name in skill_names(repo):
         src = repo / ".agents" / "skills" / name
-        for vendor, rel in ((".claude", f".claude/skills/{name}"), (".codex", f".codex/skills/{name}")):
-            dest = repo / vendor / "skills" / name
-            pairs.append((src, dest, rel))
+        dest = repo / ".claude" / "skills" / name
+        pairs.append((src, dest, f".claude/skills/{name}"))
     return pairs
 
 
@@ -1526,26 +1545,28 @@ def git_core_symlinks(repo: Path) -> str | None:
     return value or None
 
 
-def ensure_symlink_supported(repo: Path, dests: Iterable[Path] | None = None) -> None:
-    """Fail closed when Git or the destination filesystem cannot keep real links.
+def symlink_blocker(repo: Path, dests: Iterable[Path] | None = None) -> str | None:
+    """Return why real symlinks cannot be kept here, or None when they can.
 
     Why not auto-enable `core.symlinks`: PH must not raise repository or OS
-    privileges. An explicit `false` is a human/policy choice and stays blocking.
-    Capability is probed on the destination filesystem(s), not only the repo
-    root, because adapters may sit on another mount.
+    privileges. An explicit `false` is a human/policy choice and blocks the
+    symlink mode. Capability is probed on the destination filesystem(s), not
+    only the repo root, because adapters may sit on another mount. The probe
+    never pre-creates a managed adapter path: a destination that does not
+    exist yet is probed on the repository root instead, and every temporary
+    probe directory is removed before returning.
     """
 
     configured = git_core_symlinks(repo)
     if configured is not None and configured.lower() in FALSE_CORE_SYMLINKS:
-        raise PHError(
-            "symlink mode is blocked because git core.symlinks is explicitly false; "
-            "use portable mode or enable core.symlinks without this tool changing it"
-        )
+        return f"git core.symlinks is explicitly {configured}"
     probe_roots = [repo]
     if dests:
         for dest in dests:
-            parent = dest.parent if dest.suffix or dest.name else dest
-            probe_roots.append(parent if parent.exists() else repo)
+            parent = dest if dest.is_dir() else dest.parent
+            while not parent.exists() and parent != repo:
+                parent = parent.parent
+            probe_roots.append(parent)
     seen: set[Path] = set()
     for root in probe_roots:
         try:
@@ -1556,20 +1577,60 @@ def ensure_symlink_supported(repo: Path, dests: Iterable[Path] | None = None) ->
             continue
         seen.add(resolved)
         parent = resolved if resolved.is_dir() else resolved.parent
-        parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix=".ph-link-probe-", dir=parent) as raw:
-            base = Path(raw)
-            target = base / "target"
-            target.write_text("probe", encoding="utf-8")
-            link = base / "link"
-            try:
-                link.symlink_to("target")
-            except (OSError, NotImplementedError) as exc:
-                raise PHError(
-                    "symlink mode is unavailable here; use portable mode or enable the OS/Git symlink capability"
-                ) from exc
-            if not link.is_symlink() or link.resolve() != target.resolve():
-                raise PHError("symlink probe did not produce a real filesystem symlink")
+        try:
+            with tempfile.TemporaryDirectory(prefix=".ph-link-probe-", dir=parent) as raw:
+                base = Path(raw)
+                for is_directory in (False, True):
+                    target = base / ("directory" if is_directory else "file")
+                    if is_directory:
+                        target.mkdir()
+                    else:
+                        target.write_text("probe", encoding="utf-8")
+                    link = base / f"{target.name}-link"
+                    try:
+                        link.symlink_to(target.name, target_is_directory=is_directory)
+                    except (OSError, NotImplementedError) as exc:
+                        return f"os.symlink failed on {parent}: {exc}"
+                    if not link.is_symlink() or link.resolve() != target.resolve():
+                        return "symlink probe did not produce a real filesystem symlink"
+        except OSError as exc:
+            return f"symlink probe failed on {parent}: {exc}"
+    return None
+
+
+def ensure_symlink_supported(repo: Path, dests: Iterable[Path] | None = None) -> None:
+    """Fail closed when Git or the destination filesystem cannot keep real links."""
+
+    reason = symlink_blocker(repo, dests)
+    if reason is not None:
+        raise PHError(
+            f"symlink mode is unavailable here: {reason}; "
+            "use portable mode or enable the OS/Git symlink capability "
+            "without this tool changing it"
+        )
+
+
+def resolve_auto_mode(report: Report, repo: Path) -> str:
+    """Pick the adapter mode for a fresh install: symlink first, portable fallback.
+
+    Auto prefers symlink because it keeps a single source of truth. When the
+    destination filesystems or an explicit `core.symlinks=false` cannot keep
+    real links, the run downgrades to portable and the report item names the
+    concrete blocker, so the choice is never a silent one.
+    """
+
+    reason = symlink_blocker(
+        repo,
+        [
+            repo / "AGENTS.md",
+            repo / "CLAUDE.md",
+            repo / ".claude" / "skills",
+        ],
+    )
+    if reason is None:
+        return "symlink"
+    report.add("ok", ".", f"auto mode: symlink unavailable ({reason}); installing portable")
+    return "portable"
 
 
 def apply_one_symlink(dest: Path, target: Path, repo: Path | None = None) -> None:
@@ -1581,7 +1642,7 @@ def apply_one_symlink(dest: Path, target: Path, repo: Path | None = None) -> Non
         raise PHError(f"refusing to replace directory with symlink: {dest}")
     if dest.is_symlink() or dest.exists():
         dest.unlink()
-    dest.symlink_to(expected)
+    dest.symlink_to(expected, target_is_directory=target.is_dir())
 
 
 def plan_symlink_adapters(report: Report, repo: Path) -> None:
@@ -1733,17 +1794,32 @@ def check_symlink(report: Report, repo: Path) -> None:
         check_one_symlink(report, repo, dest, src, rel)
 
 
+def check_retired_codex_adapters(report: Report, repo: Path) -> None:
+    for rel in (".codex", ".codex/skills"):
+        root = repo / rel
+        if not root.exists() and not root.is_symlink():
+            return
+        if root.is_symlink() or is_disallowed_reparse(root) or not root.is_dir():
+            report.add("error", rel, "cannot safely inspect retired PH adapters; preserve this path for review")
+            return
+    for child in sorted(root.iterdir()):
+        if child.name.startswith("ph-"):
+            report.add(
+                "error", repo_rel(repo, child),
+                "retired Codex PH adapter is still live; review and archive it using the "
+                "tool-neutral-adapters migration before checking again",
+            )
+
+
 def check_common(report: Report, repo: Path, *, candidate: dict | None = None) -> dict:
     data = load_repo_manifest(repo, candidate=candidate)
+    check_retired_codex_adapters(report, repo)
     for name in REQUIRED_SKILLS:
         skill = repo / ".agents" / "skills" / name / "SKILL.md"
         if not skill.is_file():
             report.add("error", f".agents/skills/{name}/SKILL.md", "required skill missing")
         else:
             report.add("ok", f".agents/skills/{name}/SKILL.md", "present")
-    zcode = repo / ".zcode" / "skills"
-    if zcode.exists():
-        report.add("error", ".zcode/skills", "ZCode discovers .agents/skills; do not create .zcode/skills")
     gitignore = repo / ".gitignore"
     if not gitignore.is_file() or not gitignore_has_entry(gitignore.read_text(encoding="utf-8")):
         report.add("error", ".gitignore", "missing PH worktree marker")
@@ -1760,13 +1836,40 @@ def cmd_init(repo: Path, mode: str, apply: bool, adopt: dict | None = None) -> R
         return report
     skip_rels = frozenset(adopt["files"]) if adopt is not None else frozenset()
     if adopt is not None:
-        # Whole-set source pin check; drift blocks before anything is planned.
+        # Whole-set source pin check; drift blocks before any capability probe
+        # or write planning, so an obsolete approved plan has no side effects.
         check_adopt_sources(report, repo, adopt)
         plan_adopt_files(report, repo, adopt)
+        if report.blocked:
+            return report
+    if mode == "auto":
+        plans = {choice: cmd_init(repo, choice, False, adopt=adopt) for choice in MODES}
+        both_blocked = all(plan.blocked for plan in plans.values())
+        if not apply or both_blocked:
+            report.add(
+                "ok", ".",
+                "auto mode: symlink vs portable is resolved at apply time; dry run stays read-only",
+            )
+            for choice, plan in plans.items():
+                for item in plan.items:
+                    kind = item.kind
+                    if not both_blocked and kind in {"error", "block", "conflict"}:
+                        kind = "skip"
+                    report.add(kind, item.path, f"if {choice}: {item.kind}: {item.reason}", item.problem)
+            return report
+        mode = resolve_auto_mode(report, repo)
+        if plans[mode].blocked:
+            report.mode = mode
+            report.items.extend(plans[mode].items)
+            return report
+        applied = cmd_init(repo, mode, True, adopt=adopt)
+        applied.items[:0] = report.items
+        return applied
     plan_scaffold(report, repo, mode, skip_rels=skip_rels)
     plan_self_install(report, repo)
     plan_gitignore(report, repo)
-    plan_init_adapters(report, repo, mode, adopt=adopt)
+    if mode != "auto":
+        plan_init_adapters(report, repo, mode, adopt=adopt)
     check_write_ancestor_conflicts(report)
     if apply and not report.blocked:
         if adopt is not None and not check_adopt_sources(report, repo, adopt):
@@ -1781,7 +1884,6 @@ def cmd_init(repo: Path, mode: str, apply: bool, adopt: dict | None = None) -> R
                         repo / "AGENTS.md",
                         repo / "CLAUDE.md",
                         repo / ".claude" / "skills",
-                        repo / ".codex" / "skills",
                     ],
                 )
             except PHError as exc:
@@ -1802,6 +1904,11 @@ def cmd_init(repo: Path, mode: str, apply: bool, adopt: dict | None = None) -> R
 def plan_init_adapters(report: Report, repo: Path, mode: str, adopt: dict | None = None) -> None:
     """Describe adapters using the layout init would produce, including new skills."""
 
+    for rel in (".claude", ".claude/skills"):
+        root = repo / rel
+        if root.is_symlink() or is_disallowed_reparse(root) or (root.exists() and not root.is_dir()):
+            report.add("conflict", rel, "skill adapter parent must be a real directory", PROBLEM_NOT_DIRECTORY)
+            return
     virtual_skills = set(skill_names(repo)) | set(REQUIRED_SKILLS)
     if mode == "portable":
         if adopt is not None:
@@ -1852,16 +1959,14 @@ def plan_init_adapters(report: Report, repo: Path, mode: str, adopt: dict | None
                 src = extras.get(name)
                 if src is None:
                     continue
-            for vendor in (".claude", ".codex"):
-                rel = f"{vendor}/skills/{name}"
-                plan_portable_skill_mirror(report, repo, src, repo / rel, rel)
+            rel = f".claude/skills/{name}"
+            plan_portable_skill_mirror(report, repo, src, repo / rel, rel)
         return
     plan_one_symlink(report, repo, repo / "AGENTS.md", repo / ".agents" / "AGENTS.md", "symlink root AGENTS")
     plan_one_symlink(report, repo, repo / "CLAUDE.md", repo / ".agents" / "AGENTS.md", "symlink CLAUDE")
     for name in sorted(virtual_skills):
         src = repo / ".agents" / "skills" / name
         plan_one_symlink(report, repo, repo / ".claude" / "skills" / name, src, "symlink skill mirror")
-        plan_one_symlink(report, repo, repo / ".codex" / "skills" / name, src, "symlink skill mirror")
 
 
 def cmd_check(repo: Path, mode: str, *, candidate: dict | None = None) -> Report:
@@ -1911,7 +2016,6 @@ def cmd_sync(repo: Path, mode: str, apply: bool, *, candidate: dict | None = Non
                         repo / "AGENTS.md",
                         repo / "CLAUDE.md",
                         repo / ".claude" / "skills",
-                        repo / ".codex" / "skills",
                     ],
                 )
             except PHError as exc:
@@ -1963,7 +2067,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("action", choices=ACTIONS, help="init (default dry-run), check (read-only), sync (needs --apply to write)")
     parser.add_argument("--apply", action="store_true", help="Write planned changes. Required for sync writes; init is dry-run without it.")
-    parser.add_argument("--mode", choices=MODES, default=None, help="portable (default for init) or symlink. Locked per repository.")
+    parser.add_argument(
+        "--mode",
+        choices=CLI_MODES,
+        default=None,
+        help=(
+            "auto (default for a fresh init: symlink when the destination filesystem supports real links, else portable; "
+            "resolved only at apply), portable, or symlink. Locked per repository."
+        ),
+    )
     parser.add_argument("--repo", default=None, help="Git repository root or a path inside it.")
     parser.add_argument(
         "--adopt-plan",

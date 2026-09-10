@@ -6,6 +6,15 @@
 
 尚未打过历史 tag。`1.0.0` 与两套 `1.1.0` 命名是可追溯提交，不是已发布 tag。首个正式 tag 是 `v1.1.1`，不追认 `v1.1.0`。
 
+## 1.1.9
+
+- 创建 worktree 时，来源默认使用主工作区当前分支和当前提交，不再询问或切换来源分支。
+- 任务分支由代理根据当前任务和项目命名规则自行确定；用户没有指定时默认创建新的、未占用分支，名称冲突由代理自行调整。只有用户明确要求时才复用已有分支。
+- 用户明确要求创建 worktree 已构成本次正常创建授权。代理仍审查只读计划和验收命令，计划无异常时直接创建，不再二次询问分支或是否实际创建；工作区不干净、路径或分支异常等安全门禁保持不变。迁移项：`worktree-auto-branch`。
+- 适配层改为工具中立：canonical 固定 `.agents/`，根 `AGENTS.md` 为通用入口；Claude Code 经 `CLAUDE.md` 与 `.claude/skills/` 接入；Codex、OpenCode 原生读取 `AGENTS.md` 与 `.agents/skills`，不再维护 `.codex/skills` 镜像。新装不再创建 `.codex/skills/ph-*`；adapter mode 保留不变，`auto`（优先 symlink、探测失败回落 portable）只是新装的缺省请求，不适用于已装项目。
+- 已装项目升级时按证据退役 `.codex/skills/ph-*`：可证明受管的条目在 `finalize --apply` 时归档到 `.agents/archived/<日期>-pre-update/codex-skills/`（portable 镜像整目录移动；活软链改为解除链接并留含原链接目标的记录文件，`.agents/` 内不落任何链接），项目清单移除 `adapters.codex_skills`；形态异常、目标异常、内容漂移或无法证明的一律阻断并原地保留，非 `ph-*` 条目（如 `.codex/skills/my-tool`）永不触碰。迁移项：`tool-neutral-adapters`。
+- 官方 GitHub 仓库由 `ph-init` 更名为 `project-harness`，产品名统一为 Project Harness。安装入口与技能名不随仓库名变化：入口仍是 `ph-init`，技能仍是 `ph-*`，用户级安装路径仍是 `~/.agents/skills/ph-init`。新版运行时从新地址下载发行包；旧地址经 GitHub 重定向仍指向同一仓库，`FIXED_SOURCE`、`release.json.repository`、`receipt.source`、`state.source.repository` 在 1.x 保留旧地址的兼容含义，存量值不改写，1.1.8 及以后入口经旧地址仍可取得新包。迁移项：`repository-rename`。
+
 ## 1.1.8
 
 - 彻底取消独立 Schema 版本：发行包与项目清单不再携带 `schema_version` 字段，schema 标识固定为不带版本的 `urn:ph:schema:project-harness`，不另升编号。`template_version` 仍表示项目已完成升级的 PH 版本；`format_version` 等内部格式标识不变。

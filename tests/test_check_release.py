@@ -217,6 +217,23 @@ class CheckReleaseTests(unittest.TestCase):
         self.write_json(repo / "release.json", data)
         self.assert_fails(repo, "required_skills")
 
+    def test_rejects_source_identity_and_download_address_drift(self):
+        mutations = {
+            "FIXED_SOURCE": "https://github.com/chenweixuanJokes/project-harness.git",
+            "DOWNLOAD_SOURCE": "https://github.com/chenweixuanJokes/ph-init.git",
+            "OFFICIAL_FULL_NAME": "someone/project-harness",
+            "OFFICIAL_PAGE": "https://github.com/chenweixuanJokes/ph-init",
+        }
+        for name, value in mutations.items():
+            with self.subTest(constant=name), mock.patch.object(check_release.ph_release, name, value):
+                with self.assertRaisesRegex(check_release.CheckError, name):
+                    check_release.load_release(REPO_ROOT)
+
+    def test_download_address_cannot_replace_release_identity(self):
+        repo = self.git_repo("ph-check-source-identity-")
+        self.mutate_release(repo, repository=check_release.ph_release.DOWNLOAD_SOURCE)
+        self.assert_fails(repo, "repository mismatch")
+
     def test_rejects_broken_markdown_link_outside_codeblock(self):
         repo = self.git_repo("ph-check-link-")
         readme = repo / "migrations/README.md"

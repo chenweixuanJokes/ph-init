@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本仓库项目约束的**唯一人工编辑源是 `.agents/AGENTS.md`**。如果你从仓库根 `AGENTS.md` 读到本文，那是 PH 生成的适配入口（portable managed copy 或 symlink）；不要编辑当前入口，应修改 `.agents/AGENTS.md` 后运行 `ph-init sync`。根 `CLAUDE.md` 与 Claude / Codex Skill 兼容入口同样只是适配层。机器清单见 `.agents/ph.json`。
+本仓库项目约束的**唯一人工编辑源是 `.agents/AGENTS.md`**。如果你从仓库根 `AGENTS.md` 读到本文，那是 PH 生成的适配入口（portable managed copy 或 symlink）；不要编辑当前入口，应修改 `.agents/AGENTS.md` 后运行 `ph-init sync`。根 `CLAUDE.md` 与 `.claude/skills/` 是 Claude Code 适配层，同样不要直接编辑；Codex、OpenCode 等客户端原生读取 `.agents/skills`。机器清单见 `.agents/ph.json`。
 
 占位符写成 `<填写：…>`。填入本仓库事实，不要从其它项目复制环境名、中间件或版本号。
 
@@ -59,10 +59,10 @@ docs/
 
 摘要，细则见 `docs/约束规范/工程规范/Git与并行开发.md`。
 
-- 特性分支从仓库声明的基线检出，命名用英文 `<类型>/<主题>`；禁止中文分支名。
+- 普通手工开特性分支时从仓库声明的基线检出。用户明确要求创建 worktree 时，源分支取主工作区当前分支，任务分支由代理结合任务语义与项目规则自行确定；正常创建不再次问询。分支名用英文 `<类型>/<主题>`，禁止中文。
 - 并行任务默认进入 `.worktrees/<slug>--<hash>/`，该目录由仓库根 `.gitignore` 的 PH marker 忽略。
 - 禁止 `git stash`。进入 worktree 前遇到未提交改动必须停止，由用户明确决定是否提交 `wip: <说明>`；不得自动收纳未知文件。
-- 进入 / 退出流程由 `ph-worktree-enter` / `ph-worktree-exit` 执行。退出按“验证、受控提交、合并回进入时记录的源分支、再次验证”交付；清理本次隔离工作区前必须另行确认，对用户说“这次任务的工作目录”，不要把内部会话名当问句。
+- 进入 / 退出流程由 `ph-worktree-enter` / `ph-worktree-exit` 执行。用户明确要求创建 worktree 已构成本次创建授权，正常计划审查通过后直接创建；异常安全门禁仍须停止。退出按“验证、受控提交、合并回进入时记录的源分支、再次验证”交付；清理本次隔离工作区前必须另行确认，对用户说“这次任务的工作目录”，不要把内部会话名当问句。
 
 ## 测试门禁
 
@@ -93,7 +93,7 @@ docs/
 
 ## PH Skills
 
-十名固定，目录名与 `name` 一致；所有 Skill 都以 `.agents/skills/<name>/SKILL.md` 为唯一人工编辑源。升官方发行版仍由 `ph-init` 会话按 `ph-merge-update` 步骤做完，不要用 `ph-init --apply` 覆盖本文件已填事实。升级进度在 `.agents/updates/<版本>/`（`state.json` 与 `report.md`），不是业务文档。
+十名固定，目录名与 `name` 一致且均为 kebab-case；所有 Skill 都以 `.agents/skills/<name>/SKILL.md` 为唯一人工编辑源。升官方发行版仍由 `ph-init` 会话按 `ph-merge-update` 步骤做完，不要用 `ph-init --apply` 覆盖本文件已填事实。升级进度在 `.agents/updates/<版本>/`（`state.json` 与 `report.md`），不是业务文档。
 
 | Skill | 何时用 |
 | --- | --- |

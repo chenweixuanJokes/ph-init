@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -156,6 +158,31 @@ class InitAdoptionTests(unittest.TestCase):
 
     def merged_canonical(self, *legacy_texts: str) -> str:
         return "# 项目约束（PH 合并稿）\n" + "\n".join(legacy_texts) + MERGED_NOTE
+
+    def seed_installed_canonical(self, repo: Path, *, with_codex: bool = True) -> dict:
+        """Materialize a canonical layout, optionally using the legacy adapter."""
+
+        scaffold_agents = SCAFFOLD / ".agents"
+        agents = repo / ".agents"
+        agents.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(scaffold_agents / "skills", agents / "skills")
+        ph_init_skill = agents / "skills" / "ph-init"
+        ph_init_skill.mkdir(parents=True, exist_ok=True)
+        (ph_init_skill / "SKILL.md").write_bytes((REPO_ROOT / "SKILL.md").read_bytes())
+        (agents / "AGENTS.md").write_bytes((scaffold_agents / "AGENTS.md").read_bytes())
+        (agents / "ph.schema.json").write_bytes((scaffold_agents / "ph.schema.json").read_bytes())
+        data = json.loads((scaffold_agents / "ph.json").read_text(encoding="utf-8"))
+        if with_codex:
+            data["adapters"]["codex_skills"] = {
+                "mode": "mirror_tree",
+                "path": ".codex/skills",
+                "source": ".agents/skills",
+                "include": "ph-*",
+            }
+        (agents / "ph.json").write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        return data
 
     # -- positive adopt cases -------------------------------------------------
 
@@ -327,6 +354,32 @@ class InitAdoptionTests(unittest.TestCase):
         self.assertFalse((repo / ".codex" / "skills" / "my-tool").exists())
 
     # -- regression: plain init still behaves ---------------------------------
+
+    def test_candidate_manifest_may_only_delete_codex_skills_adapter(self):
+        # The Codex/OpenCode native-reuse topology retired codex_skills, but
+        # merge-update kernels that still emit it must keep verifying, and a
+        # candidate may not smuggle any other adapters difference through.
+        repo = self.git_repo("ph-adopt-candidate-")
+        actual = self.seed_installed_canonical(repo)
+
+        kept = copy.deepcopy(actual)
+        with self.assertRaises(ph_init.PHError):
+            ph_init.load_repo_manifest(repo, candidate=kept)
+
+        trimmed = copy.deepcopy(actual)
+        del trimmed["adapters"]["codex_skills"]
+        ph_init.load_repo_manifest(repo, candidate=trimmed)
+
+        wrong_codex_mode = copy.deepcopy(actual)
+        wrong_codex_mode["adapters"]["codex_skills"]["mode"] = "symlink"
+        missing_claude = copy.deepcopy(actual)
+        del missing_claude["adapters"]["claude_skills"]
+        renamed_extra = copy.deepcopy(actual)
+        renamed_extra["adapters"]["opencode_skills"] = dict(renamed_extra["adapters"]["codex_skills"])
+        for candidate in (wrong_codex_mode, missing_claude, renamed_extra):
+            with self.subTest(adapters=sorted(candidate["adapters"])):
+                with self.assertRaises(ph_init.PHError):
+                    ph_init.load_repo_manifest(repo, candidate=candidate)
 
     def test_plain_init_regression_both_modes_on_empty_repo(self):
         for mode in ("portable", "symlink"):

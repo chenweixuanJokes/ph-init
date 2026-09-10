@@ -34,15 +34,24 @@ def digest(root):
 
 
 class LocalTransport(ph_release.GitTransport):
-    def __init__(self, source):
+    """Offline transport; pins the exact remote URL each caller must use.
+
+    The current tool downloads from DOWNLOAD_SOURCE (the repository was
+    renamed to project-harness); a historical downloader still addresses the
+    old FIXED_SOURCE URL. Each instance accepts exactly one URL on purpose:
+    tolerating both would mask a tool calling the wrong source.
+    """
+
+    def __init__(self, source, expected=None):
         self.source = source
+        self.expected = ph_release.DOWNLOAD_SOURCE if expected is None else expected
 
     def ls_remote_tags(self, source):
-        assert source == ph_release.FIXED_SOURCE
+        assert source == self.expected, f"unexpected remote {source!r}, expected {self.expected!r}"
         return command("git", "ls-remote", "--tags", str(self.source))
 
     def fetch_commit(self, source, commit, dest):
-        assert source == ph_release.FIXED_SOURCE
+        assert source == self.expected, f"unexpected remote {source!r}, expected {self.expected!r}"
         command("git", "init", "--bare", "--template=", str(dest))
         command("git", "-C", str(dest), "fetch", "--no-tags", str(self.source), commit)
 
@@ -105,7 +114,10 @@ class ReleaseIntegrationTests(unittest.TestCase):
                         with self.assertRaisesRegex(module.PHReleaseError, "missing schema_version"):
                             module.prepare_release(
                                 CURRENT,
-                                transport=LocalTransport(source),
+                                # Historical downloaders still address the
+                                # old FIXED_SOURCE URL; only the renamed
+                                # current tool uses DOWNLOAD_SOURCE.
+                                transport=LocalTransport(source, expected=module.FIXED_SOURCE),
                                 parent=workspace / f"old-download-{version}",
                             )
                         support.assert_not_called()
@@ -119,6 +131,12 @@ class ReleaseIntegrationTests(unittest.TestCase):
             )
             root = prepared.root
             self.assertEqual(set(prepared.as_dict()), {"version", "tag", "commit", "source", "root"})
+            # The rename keeps the historical URL as the identity of the
+            # result and the receipt, while the download itself used the
+            # renamed project-harness repository.
+            self.assertEqual(prepared.source, ph_release.FIXED_SOURCE)
+            receipt = json.loads((root / ".ph-source.json").read_text())
+            self.assertEqual(receipt["source"], ph_release.FIXED_SOURCE)
             self.assertNotIn("schema_version", json.loads((root / "release.json").read_text()))
             for mode in ("portable", "symlink"):
                 with self.subTest(mode=mode):

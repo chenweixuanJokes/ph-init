@@ -20,6 +20,30 @@ EVALS = ROOT / "evals/evals.json"
 RESULT_STATES = ("已核验", "复用", "不适用", "待核实", "冲突")
 EVIDENCE_KINDS = ("模块", "代码", "配置", "真实依赖", "测试", "CI", "旧约束")
 ADOPT_SOURCES_ENTRIES = (".agents/AGENTS.md", "AGENTS.md", "CLAUDE.md")
+# Common strict subset every distributed skill must satisfy: strict kebab-case
+# name (slot directory equals frontmatter name) and a non-empty description
+# of at most 1024 characters.
+STRICT_SKILL_NAME = re.compile(r"^ph-[a-z0-9]+(?:-[a-z0-9]+)*$")
+FRONTMATTER_BLOCK = re.compile(r"\A---\n(.*?)\n---\n", re.S)
+FRONTMATTER_SCALAR = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
+
+
+def frontmatter_scalars(text: str) -> dict:
+    """Precise, limited frontmatter parse: flat ``key: value`` scalars only.
+
+    The distributed skills keep single-line scalars, so no third-party YAML
+    dependency is needed; anything else fails loudly instead of guessing.
+    """
+    block = FRONTMATTER_BLOCK.match(text)
+    if block is None:
+        raise AssertionError("missing YAML frontmatter")
+    fields = {}
+    for raw in block.group(1).splitlines():
+        parsed = FRONTMATTER_SCALAR.match(raw)
+        if parsed is None:
+            raise AssertionError(f"cannot parse frontmatter line: {raw!r}")
+        fields[parsed.group(1)] = parsed.group(2).strip().strip("\"'")
+    return fields
 
 
 def scaffold_docs_texts():
@@ -33,20 +57,20 @@ class SkillContractTests(unittest.TestCase):
         cls.skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
 
     def test_batch_version_single_ph_version_contract(self):
-        self.assertIn("1.1.8", self.skill)
-        self.assertNotIn("1.1.7", self.skill)
+        self.assertIn("本批版本为 `1.1.9`", self.skill)
         self.assertNotIn("1.1.1", self.skill)  # separate schema version is gone
         self.assertIn("urn:ph:schema:project-harness", self.skill)
         self.assertIn("不再有独立的 Schema 版本", self.skill)
 
     def test_one_time_entry_switch_documented(self):
         # old (<=1.1.7) prepare necessarily rejects the schema-less package
-        self.assertIn("必然拒绝本包", self.skill)
+        self.assertIn("必然拒绝 1.1.8 及以后发行包", self.skill)
         self.assertIn("不假称自动恢复", self.skill)
         self.assertIn("v1.1.8", self.skill)
         self.assertIn("新的仓外安全目录", self.skill)
         self.assertIn("不覆盖用户级入口与目标项目", self.skill)
         self.assertIn("prepare --version 1.1.8", self.skill)
+        self.assertIn("目标 `1.1.9` 发行根", self.skill)
         # old schema_version field is removed only after finalize passes
         self.assertIn("仅在 finalize", self.skill)
 
@@ -57,13 +81,74 @@ class SkillContractTests(unittest.TestCase):
         self.assertNotIn("转交", self.skill)
         self.assertNotIn("转 merge-update", self.skill)
 
-    def test_mode_default_infers_before_portable(self):
+    def test_mode_default_auto_for_new_installs(self):
         mode_lines = [line for line in self.skill.splitlines() if "--mode" in line]
         self.assertTrue(mode_lines, "skill must document the --mode default")
-        bullet = next(line for line in mode_lines if "缺省" in line)
-        self.assertIn("推断", bullet)
-        self.assertIn("portable", bullet)
+        default = next(line for line in mode_lines if "缺省" in line)
+        self.assertIn("auto", default)
+        self.assertIn("symlink", default)
+        self.assertIn("portable", default)
+        # new installs prefer relative symlinks at apply; probe failure -> portable
+        self.assertIn("优先使用相对 symlink", self.skill)
+        self.assertIn("探测失败自动改用 portable", self.skill)
+        self.assertIn("不当作错误", self.skill)
+        # dry-run neither probes nor writes; explicit symlink fails strictly
+        self.assertIn("dry-run 不探测、不写入", self.skill)
+        self.assertIn("严格失败", self.skill)
+        # portable is a managed copy/mirror, not a functional downgrade
+        self.assertIn("受管副本 / 镜像，不是功能降级", self.skill)
+        self.assertIn("Windows `core.symlinks=false`", self.skill)
+        self.assertIn("会展开链接", self.skill)
+        # installed projects keep their mode; no automatic conversion
+        self.assertIn("已装项目保留模式", self.skill)
+        self.assertIn("不自动转换", self.skill)
         self.assertNotIn("`init` 为 `portable`", self.skill)  # old wrong claim
+
+    def test_skill_is_tool_neutral(self):
+        # the shipped text carries no vendor-specific declarations
+        self.assertNotIn("ZCode", self.skill)
+        self.assertNotIn(".zcode", self.skill)
+        self.assertNotIn(".codex", self.skill)
+        self.assertNotIn(".opencode", self.skill)
+        self.assertIn("编码客户端内置的初始化向导", self.skill)
+
+    def test_multi_client_adapters_documented(self):
+        for client in ("Claude Code", "Codex", "OpenCode"):
+            self.assertIn(client, self.skill)
+        self.assertIn(".claude/skills/", self.skill)
+        self.assertIn("原生读取 `.agents/skills`", self.skill)
+
+    def test_ten_distributed_skills_share_strict_frontmatter_subset(self):
+        release = json.loads((ROOT / "release.json").read_text(encoding="utf-8"))
+        required = release["required_skills"]
+        self.assertEqual(len(required), 10)
+        # the root SKILL.md is the tenth slot; the other nine live in scaffold
+        slots = {
+            "ph-init": ROOT / "SKILL.md",
+            **{
+                name: SCAFFOLD / ".agents" / "skills" / name / "SKILL.md"
+                for name in required
+                if name != "ph-init"
+            },
+        }
+        scaffold_dirs = sorted(
+            child.name
+            for child in (SCAFFOLD / ".agents" / "skills").iterdir()
+            if child.is_dir()
+        )
+        self.assertEqual(scaffold_dirs, sorted(name for name in required if name != "ph-init"))
+        for name, path in sorted(slots.items()):
+            with self.subTest(skill=name):
+                self.assertTrue(path.is_file(), f"missing skill file for {name}")
+                self.assertTrue(STRICT_SKILL_NAME.match(name),
+                                f"skill name is not strict kebab-case: {name}")
+                fields = frontmatter_scalars(path.read_text(encoding="utf-8"))
+                self.assertEqual(fields.get("name"), name,
+                                 "slot name and frontmatter name must match")
+                description = fields.get("description")
+                self.assertTrue(description and description.strip(),
+                                "description must be non-empty")
+                self.assertLessEqual(len(description), 1024)
 
     def test_adopt_plan_cli_contract_is_explicit(self):
         self.assertIn("--adopt-plan", self.skill)

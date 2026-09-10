@@ -53,3 +53,4 @@
 | [1.1.5 → 1.1.6](./1.1.5-to-1.1.6.md) | 对用户提问改成日常用语，内部字段名仍留在代理侧 | `plain-user-questions` |
 | [1.1.6 → 1.1.7](./1.1.6-to-1.1.7.md) | 准备成功后已登录则加星并建账号副本，不改下载源 | `prepare-star-fork` |
 | [1.1.7 → 1.1.8](./1.1.7-to-1.1.8.md) | 彻底取消独立 Schema 版本，单一 PH 版本与一次性入口切换 | `single-ph-version` |
+| [1.1.8 → 1.1.9](./1.1.8-to-1.1.9.md) | worktree 默认使用当前源分支，任务分支由代理确定；适配层改工具中立三工具拓扑，安全退役 `.codex/skills/ph-*`；官方仓库更名 `project-harness`，产品名 Project Harness，技能名不变 | `worktree-auto-branch` `tool-neutral-adapters` `repository-rename` |

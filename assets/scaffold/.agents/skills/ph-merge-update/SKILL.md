@@ -26,17 +26,17 @@ description: "已装 PH 项目升到正式发行版的步骤：从唯一 GitHub 
 
 ## 来源与命令
 
-唯一源：`https://github.com/chenweixuanJokes/ph-init.git`。`latest` = 数值最大的稳定 tag（排除预发布与非版本标签），并固定到该 tag 的 commit。无 tag、网络失败、tag/commit/元数据不一致则停止；不拿本地 `assets/scaffold` 或 `main` 冒充最新。本版起 PH 只有单一版本号：发行包与项目清单都不再携带 `schema_version`，schema 标识固定为无版本的 `urn:ph:schema:project-harness`。
+唯一源：`https://github.com/chenweixuanJokes/project-harness.git`。官方仓库由 `ph-init` 更名而来：旧地址 `https://github.com/chenweixuanJokes/ph-init.git` 经 GitHub 重定向指向同一仓库，1.1.8 及以后入口按旧地址 prepare 取到新包不是错误；`FIXED_SOURCE` 等固定标识与 `release.json.repository`、`receipt.source`、`state.source.repository` 在 1.x 保留旧地址的兼容含义，存量值不改写、不当作错误。`latest` = 数值最大的稳定 tag（排除预发布与非版本标签），并固定到该 tag 的 commit。无 tag、网络失败、tag/commit/元数据不一致则停止；不拿本地 `assets/scaffold` 或 `main` 冒充最新。本版起 PH 只有单一版本号：发行包与项目清单都不再携带 `schema_version`，schema 标识固定为无版本的 `urn:ph:schema:project-harness`。
 
 准备（下载在目标仓库外）：
 
 ```text
-python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.8 --repo <target>
+python3 <ph-init-root>/scripts/ph_release.py prepare --version latest|1.1.9 --repo <target>
 ```
 
-stdout JSON 字段：`root` `version` `tag` `commit` `source`。`source` 是固定仓库 URL 字符串。本地已有该 commit 的检查不访问网络。准备成功后把脚本提示转告用户；没登录不拦升级。本会话刚用旧脚本 prepare 时，用发行根补跑 `python3 <release-root>/scripts/ph_release.py support`，不必为了加星再下一遍包。检查 / 同步仍然离线，不重新 prepare，也不为了加星上网。安装和以后升级仍从官方地址进行。
+stdout JSON 字段：`root` `version` `tag` `commit` `source`。`source` 是固定仓库 URL 字符串（1.x 仍为旧地址，保留兼容含义，不改写、不当错误）。本地已有该 commit 的检查不访问网络。准备成功后把脚本提示转告用户；没登录不拦升级。本会话刚用旧脚本 prepare 时，用发行根补跑 `python3 <release-root>/scripts/ph_release.py support`，不必为了加星再下一遍包。检查 / 同步仍然离线，不重新 prepare，也不为了加星上网。安装和以后升级仍从官方地址进行。
 
-**一次性入口切换（升到本版时适用）**：旧版（1.1.7 及更早）用户级入口的 prepare 必查发行元数据里的 `schema_version`，会必然拒绝本包；这是预期现象，不重试、不回退、不假称自动恢复。把官方稳定标签 v1.1.8 clone 到一个**新的仓外安全目录**（如 `mktemp -d` 创建），不覆盖用户级入口与目标项目，不用 `main` 或本地开发树冒充发行；在该新目录运行 `python3 <新目录>/scripts/ph_release.py prepare --version 1.1.8`，之后本文件全部命令都使用该 prepare 返回的发行根，不再用旧目录脚本。标签未发布前不实际执行该下载。
+**一次性入口切换**：旧版（1.1.7 及更早）用户级入口的 prepare 必查发行元数据里的 `schema_version`，会必然拒绝 1.1.8 及以后发行包；这是预期现象，不重试、不回退、不假称自动恢复。把首个无独立 Schema 版本的已发布标签 v1.1.8 clone 到一个**新的仓外安全目录**（如 `mktemp -d` 创建），不覆盖用户级入口与目标项目，不用 `main` 或本地开发树冒充发行；先在该目录运行 `python3 <新目录>/scripts/ph_release.py prepare --version 1.1.8` 并读取返回根的 Skill，再用这份新工具准备并固定目标 1.1.9 发行根。之后本文件全部升级命令都使用 1.1.9 prepare 返回的根，不再用旧目录或 v1.1.8 发行根冒充最终目标。1.1.8 及以后入口可直接准备 1.1.9。
 
 同一次预检与写入复用这个 `root`。读该 root 的本 Skill 与 `migrations/`。升级工具在发行根，不在目标旧包：
 
@@ -162,9 +162,31 @@ python3 <release-root>/scripts/ph_merge_update.py finalize [--apply] --repo <tar
 
 | id | 做完的样子 |
 | --- | --- |
-| `single-ph-version` | 已合并单一版本口径与一次性入口切换说明；升级用 v1.1.8 新发行根完成，旧入口未被覆盖；finalize 通过后项目清单不再含 `schema_version` 且 `template_version=1.1.8`，schema `$id` 为无版本的 `urn:ph:schema:project-harness`；业务正文与未完成记录仍保留 |
+| `single-ph-version` | 已合并单一版本口径与一次性入口切换说明；升级使用经过固定来源校验的无独立 Schema 版本发行根，旧入口未被覆盖；finalize 通过后项目清单不再含 `schema_version`，`template_version` 写当前目标版本，schema `$id` 为无版本的 `urn:ph:schema:project-harness`；业务正文与未完成记录仍保留 |
 
 旧入口拒绝新包时，如实说明下载未完成、尚未升级项目；说明需要取得新版工具，再按授权范围处理。不得把旧工具的失败说成已经完成入口切换。
+
+## 1.1.9 worktree 默认决策项
+
+读 `<release-root>/migrations/1.1.8-to-1.1.9.md`，从更早版本出发仍须读完整链。
+
+| id | 做完的样子 |
+| --- | --- |
+| `worktree-auto-branch` | `ph-worktree-enter` 和项目并行开发规则已明确：来源取主工作区当前分支，任务分支由代理依据任务语义和项目规则自行确定；用户明确要求创建后，正常计划不再二次询问，异常安全门禁仍保留。项目自己的分支命名、验证命令与本地定制未被整文件覆盖 |
+
+## 1.1.9 工具中立适配项
+
+同样读取 `<release-root>/migrations/1.1.8-to-1.1.9.md` 的 `tool-neutral-adapters`。Codex 与 OpenCode 直接读取根 `AGENTS.md` 和 `.agents/skills`；Claude Code 保留 `CLAUDE.md` 与 `.claude/skills` 入口，不新建其他镜像。
+
+合并前核对旧 `.codex/skills/ph-*` 是否为受管链接或镜像，并保存内容摘要。`inspect` / `verify` 只读分类；可证明受管的条目由 `finalize --apply` 归档到 `.agents/archived/<日期>-pre-update/codex-skills/`，软链接保存原目标记录，普通镜像完整移动。内容漂移或证据不足时停止，不凭名称归档；语义合并阶段需要处置的项目定制须先审阅并保留原文。非 `ph-*` 技能及其他配置不动。
+
+finalize 成功后清单删除 `adapters.codex_skills`，普通 check 不得再发现活动的旧 PH 入口。自动归档结果保存在升级 state 的 `retired_codex` 中；中断后复用原记录，不能覆盖不同内容的归档。项目原来的 portable / symlink 模式不变，`auto` 只用于未锁定模式的新安装。
+
+## 1.1.9 仓库更名项
+
+同样读取 `<release-root>/migrations/1.1.8-to-1.1.9.md` 的 `repository-rename`。官方仓库由 `ph-init` 更名为 `project-harness`，产品名 Project Harness；技能名与安装路径不随仓库名变化，仍是 `ph-init` 与 `ph-*`，不迁移用户级入口、不重建技能目录。
+
+合并新 Skill 中的官方源说明，正式链接指向新仓库；项目文档如有引用官方源地址，一并更新为新地址。`receipt.source`、state 的 `source.repository`、`release.json.repository` 在 1.x 保留旧地址的兼容含义，存量值不改写、不当作错误；已发布迁移说明与历史升级记录中的旧地址保持原样。1.1.8 及以后入口按旧地址 prepare 也能取到新包，不是错误。
 
 ## 完成标准
 

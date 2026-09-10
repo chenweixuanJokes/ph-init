@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "这个需求和当前修复要并行做，帮我从主工作区开一个 feature/agent-search 的隔离 worktree。",
-      "expected_output": "触发 ph-worktree-enter；读取项目规范、先 dry-run，获得授权后创建 PH session 与 linked worktree。",
+      "expected_output": "触发 ph-worktree-enter；源分支直接取主工作区当前 feature 分支，使用用户已给出的新任务分支 feature/agent-search，读取项目规范并审查只读计划；用户的创建请求已经授权本次正常创建，计划无异常时直接 apply，创建 PH session 与 linked worktree，不再询问分支或是否真正创建。",
       "files": []
     },
     {
@@ -17,6 +17,12 @@
       "id": 3,
       "prompt": "把当前分支切换到 release/sit 看一下代码，不需要并行工作区。",
       "expected_output": "不触发 ph-worktree-enter；这是普通切换分支且用户明确不需要 worktree。",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "给当前这个登录超时修复开一个 worktree，直接创建，不用再问我分支名。",
+      "expected_output": "触发 ph-worktree-enter；源分支直接取主工作区当前 attached branch，代理结合修复任务和项目规则自行生成未占用的新任务分支名（例如 fix/login-timeout），审查只读计划和验收命令后直接 apply。正常创建不再询问来源分支、任务分支或是否真正创建；异常安全门禁仍阻断。",
       "files": []
     }
   ]

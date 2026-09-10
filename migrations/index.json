@@ -82,6 +82,16 @@
       "items": [
         "single-ph-version"
       ]
+    },
+    {
+      "from_version": "1.1.8",
+      "to_version": "1.1.9",
+      "path": "migrations/1.1.8-to-1.1.9.md",
+      "items": [
+        "worktree-auto-branch",
+        "tool-neutral-adapters",
+        "repository-rename"
+      ]
     }
   ]
 }

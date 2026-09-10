@@ -30,7 +30,9 @@ import ph_release  # noqa: E402
 FORMAT_VERSION = 1
 STABLE_TAG = re.compile(r"^v([0-9]+)\.([0-9]+)\.([0-9]+)$")
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
-SKILL_NAME = re.compile(r"^ph-[a-z0-9-]+$")
+# Strict kebab-case for the ten distributed skills: lowercase alphanumeric
+# segments joined by single hyphens, no leading/trailing/double hyphen.
+SKILL_NAME = re.compile(r"^ph-[a-z0-9]+(?:-[a-z0-9]+)*$")
 ITEM_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 GIT_OBJECT_ID = re.compile(r"^[0-9a-f]{40}$")
 MD_LINK = re.compile(r"(?<!!)\[(?:[^\]\\]|\\.)+\]\(([^)]+)\)")
@@ -171,6 +173,10 @@ def iter_files(root: Path) -> Iterable[Path]:
 
 
 def load_release(root: Path) -> dict:
+    _const(ph_release.FIXED_SOURCE, "https://github.com/chenweixuanJokes/ph-init.git", "ph_release.FIXED_SOURCE")
+    _const(ph_release.DOWNLOAD_SOURCE, "https://github.com/chenweixuanJokes/project-harness.git", "ph_release.DOWNLOAD_SOURCE")
+    _const(ph_release.OFFICIAL_FULL_NAME, "chenweixuanJokes/project-harness", "ph_release.OFFICIAL_FULL_NAME")
+    _const(ph_release.OFFICIAL_PAGE, "https://github.com/chenweixuanJokes/project-harness", "ph_release.OFFICIAL_PAGE")
     data = read_json_object(root / "release.json", "release.json")
     format_version = _need(data, "format_version", "release.json")
     if not isinstance(format_version, int) or isinstance(format_version, bool):
@@ -351,12 +357,22 @@ def parse_frontmatter(text: str, label: str) -> dict[str, str]:
 
 
 def validate_skill(path: Path, expected_name: str) -> None:
+    """Common strict subset shared by all ten distributed skills.
+
+    The skill slot (root ``SKILL.md`` for ``ph-init``, the scaffold directory
+    otherwise) and the frontmatter ``name`` must be the same strict kebab-case
+    identifier, and ``description`` must be a non-empty string of at most 1024
+    characters. Frontmatter parsing stays limited to flat scalars; there is
+    deliberately no third-party YAML dependency.
+    """
     text = path.read_text(encoding="utf-8")
     fields = parse_frontmatter(text, str(path))
     name = fields.get("name")
     description = fields.get("description")
     if name != expected_name:
         raise CheckError(f"illegal skill frontmatter: {path} name must be {expected_name!r}")
+    if not SKILL_NAME.match(name):
+        raise CheckError(f"illegal skill frontmatter: {path} name is not strict kebab-case: {name!r}")
     if not isinstance(description, str) or not description.strip():
         raise CheckError(f"illegal skill frontmatter: {path} description is empty")
     if len(description) > 1024:
@@ -439,6 +455,14 @@ def validate_schema(root: Path) -> dict:
     properties = schema.get("properties")
     if isinstance(properties, dict) and "schema_version" in properties:
         raise CheckError("illegal schema: properties must not define schema_version")
+    adapters = properties.get("adapters") if isinstance(properties, dict) else None
+    adapter_properties = adapters.get("properties") if isinstance(adapters, dict) else None
+    adapter_required = adapters.get("required") if isinstance(adapters, dict) else None
+    expected = {"root_agents", "claude_entry", "claude_skills"}
+    if not isinstance(adapter_properties, dict) or set(adapter_properties) != expected:
+        raise CheckError("illegal schema: adapters must define only the three supported entries")
+    if not isinstance(adapter_required, list) or set(adapter_required) != expected:
+        raise CheckError("illegal schema: adapters must require the three supported entries")
     return schema
 
 
@@ -455,6 +479,10 @@ def validate_manifest(root: Path, release: Mapping[str, object]) -> None:
         raise CheckError(
             f"illegal manifest: template_version must be {release['version']!r}"
         )
+    adapters = data.get("adapters")
+    expected_adapters = {"root_agents", "claude_entry", "claude_skills"}
+    if not isinstance(adapters, dict) or set(adapters) != expected_adapters:
+        raise CheckError("illegal manifest: adapters must contain only the three supported entries")
     skills = data.get("skills")
     if not isinstance(skills, dict):
         raise CheckError("illegal manifest: skills must be an object")

@@ -26,7 +26,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Unit tests
+      - name: Historical upgrade matrix and unit tests
         run: python3 -m unittest discover -s tests -v
 
       - name: Release check

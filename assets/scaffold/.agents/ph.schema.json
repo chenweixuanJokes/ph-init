@@ -46,7 +46,7 @@
     "adapters": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["root_agents", "claude_entry", "claude_skills", "codex_skills"],
+      "required": ["root_agents", "claude_entry", "claude_skills"],
       "properties": {
         "root_agents": {
           "type": "object",
@@ -75,17 +75,6 @@
           "properties": {
             "mode": { "enum": ["mirror_tree", "symlink"] },
             "path": { "const": ".claude/skills" },
-            "source": { "const": ".agents/skills" },
-            "include": { "const": "ph-*" }
-          }
-        },
-        "codex_skills": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["mode", "path", "source", "include"],
-          "properties": {
-            "mode": { "enum": ["mirror_tree", "symlink"] },
-            "path": { "const": ".codex/skills" },
             "source": { "const": ".agents/skills" },
             "include": { "const": "ph-*" }
           }
@@ -163,7 +152,7 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^ph-[a-z0-9-]+$" }
+          "items": { "type": "string", "pattern": "^ph-[a-z0-9]+(?:-[a-z0-9]+)*$" }
         }
       }
     }
@@ -180,8 +169,7 @@
             "properties": {
               "root_agents": { "properties": { "mode": { "const": "managed_copy" } } },
               "claude_entry": { "properties": { "mode": { "const": "import_stub" } } },
-              "claude_skills": { "properties": { "mode": { "const": "mirror_tree" } } },
-              "codex_skills": { "properties": { "mode": { "const": "mirror_tree" } } }
+              "claude_skills": { "properties": { "mode": { "const": "mirror_tree" } } }
             }
           }
         }
@@ -198,8 +186,7 @@
             "properties": {
               "root_agents": { "properties": { "mode": { "const": "symlink" } } },
               "claude_entry": { "properties": { "mode": { "const": "symlink" } } },
-              "claude_skills": { "properties": { "mode": { "const": "symlink" } } },
-              "codex_skills": { "properties": { "mode": { "const": "symlink" } } }
+              "claude_skills": { "properties": { "mode": { "const": "symlink" } } }
             }
           }
         }

@@ -1,6 +1,6 @@
-# ph-init 分发仓库约束
+# Project Harness 分发仓库约束
 
-本仓是 PH 的唯一正式 GitHub 分发源，不是已经初始化的业务项目；不得在本仓运行 `ph-init init --apply` 把 scaffold 覆盖到仓库根。
+本仓（`chenweixuanJokes/project-harness`，由 `ph-init` 更名而来）是 PH 的唯一正式 GitHub 分发源，不是已经初始化的业务项目；不得在本仓运行 `ph-init init --apply` 把 scaffold 覆盖到仓库根。
 
 ## 版本与发布（必读）
 
@@ -9,6 +9,7 @@
 - 每个对外发布的小改动批次必须递增 `1.1.x`，并同时补充旧版本到新版本的迁移说明、`migrations/index.json` 与 Changelog。缺任一项不得发布。
 - 版本以 `release.json` 为维护源；已发布标签和版本材料不可改写。
 - 运行 `python3 scripts/check_release.py` 和完整回归，正式标签另跑 `--tag` 校验；测试失败不得当作已验收。
+- 任何安装、升级、迁移及其发行有效内容的改动，必须先通过历史升级矩阵：范围以 `migrations/index.json` 为准，覆盖每个旧版本（无 tag 历史用固定 commit，现有 `1.0.0`、两套 `1.1.0` 布局与 `1.1.2` 分别覆盖）和 portable/symlink 两种模式，用历史版本自身安装工具构造真实旧项目，不得只改 manifest 版本号模拟；新迁移项必须自动进入矩阵，缺支持即失败，不准 skip。细则以链接文档第 6 节为准。
 - 本仓维护文档与下游 scaffold 分属不同作用域。不要把维护者规则误装进用户项目；具体例外、合并保护与发布门禁以链接文档为准。
 
 ## Canonical 与本地入口

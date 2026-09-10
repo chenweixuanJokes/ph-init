@@ -130,21 +130,20 @@ def main() -> int:
         for skill in canonical_skills.glob("ph-*")
         if skill.is_dir() and (skill / "SKILL.md").is_file()
     }
-    for vendor in (".claude", ".codex"):
-        vendor_root = template / vendor / "skills"
-        vendor_root.mkdir(parents=True, exist_ok=True)
-        stale_skills = sorted(
-            child.name
-            for child in vendor_root.glob("ph-*")
-            if child.name not in skill_names
+    vendor_root = template / ".claude" / "skills"
+    vendor_root.mkdir(parents=True, exist_ok=True)
+    stale_skills = sorted(
+        child.name
+        for child in vendor_root.glob("ph-*")
+        if child.name not in skill_names
+    )
+    if stale_skills:
+        raise SystemExit(
+            "published .claude skills contain stale generated directories: "
+            + ", ".join(stale_skills)
         )
-        if stale_skills:
-            raise SystemExit(
-                f"published {vendor} skills contain stale generated directories: "
-                + ", ".join(stale_skills)
-            )
-        for name in sorted(skill_names):
-            copy_tree(canonical_skills / name, vendor_root / name)
+    for name in sorted(skill_names):
+        copy_tree(canonical_skills / name, vendor_root / name)
 
     print("published=project-template portable")
     print(f"skills={len(list(canonical_skills.glob('ph-*')))}")

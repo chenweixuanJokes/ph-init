@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "这个刚创建的 Git 仓库还没有项目级 Agent 约束，请按 PH 标准初始化整套目录，先预检再实施。",
-      "expected_output": "触发 ph-init。先对唯一 GitHub 源 prepare（latest 稳定 tag、固定 commit），读发行根 SKILL，再用该根 ph_init.py 先 dry-run 后 apply。无 tag 或网络失败则阻断，不拿本地 scaffold 冒充最新。不 git pull。准备成功后把脚本提示转告用户：已登录会加星并建账号副本，没登录不拦安装，不从副本拉正式包。确认后 portable 初始化并 check。本 eval 不表示已实测。",
+      "expected_output": "触发 ph-init。先对唯一 GitHub 源 prepare（latest 稳定 tag、固定 commit），读发行根 SKILL，再用该根 ph_init.py 先 dry-run 后 apply。无 tag 或网络失败则阻断，不拿本地 scaffold 冒充最新。不 git pull。准备成功后把脚本提示转告用户：已登录会加星并建账号副本，没登录不拦安装，不从副本拉正式包。确认后按缺省 auto 初始化（apply 阶段优先相对 symlink，探测失败自动 portable）并跑已装内核 check。本 eval 不表示已实测。",
       "files": []
     },
     {
@@ -111,14 +111,38 @@
     },
     {
       "id": 19,
-      "prompt": "用户目录里装的 ph-init 还是旧版，刚才升级时脚本报错 illegal release.json: missing schema_version。这个仓库已装 PH，帮我升到 1.1.8。",
-      "expected_output": "触发 ph-init。识别为旧版入口 prepare 必然拒绝 1.1.8 包（新包无 schema_version，旧脚本必查该键），不是网络故障，不重试不回退不假称自动恢复。向用户说明后执行一次性入口切换：把官方稳定标签 v1.1.8 clone 到新的仓外安全目录，不覆盖用户级入口与目标项目，不用 main 或本地开发树冒充发行；用新目录 prepare --version 1.1.8，读返回 root 的 SKILL，本会话按发行根 merge-update 步骤 inspect → 语义合并 → verify → finalize 完成，不 init --apply。finalize 通过后项目清单不再含 schema_version，template_version 写 1.1.8。本 eval 不表示已实测。",
+      "prompt": "用户目录里装的 ph-init 还是旧版，刚才升级时脚本报错 illegal release.json: missing schema_version。这个仓库已装 PH，帮我升到 1.1.9。",
+      "expected_output": "触发 ph-init。识别为 1.1.7 及更早入口必然拒绝 1.1.8 及以后包（新包无 schema_version，旧脚本必查该键），不是网络故障，不重试不回退不假称自动恢复。执行一次性入口切换：把已发布 v1.1.8 clone 到新的仓外安全目录，不覆盖用户级入口与目标项目，不用 main 或本地开发树冒充；先用新目录 prepare --version 1.1.8 并读取返回根的 Skill，再由这份新工具准备并固定 1.1.9。之后本会话只用 1.1.9 发行根按 merge-update 步骤 inspect → 语义合并 → verify → finalize 完成，不 init --apply。finalize 通过后项目清单不再含 schema_version，template_version 写 1.1.9。本 eval 不表示已实测。",
       "files": []
     },
     {
       "id": 20,
-      "prompt": "从 PH 1.1.6 直接升到 1.1.8。项目 ph.json 里还有 schema_version 字段，业务文档和没做完的升级记录都别动。",
-      "expected_output": "触发 ph-init 的升级分流。读完整迁移链 1.1.6→1.1.7→1.1.8，进度目录用最终目标版本 1.1.8；先按 1.1.7 项合并加星说明，再做 single-ph-version 单一版本与一次性入口切换项。业务正文、既有模式与未完成升级记录保留，已落地项不重做；旧 schema_version 字段仅在 finalize 验收通过后随 template_version=1.1.8 一起移除，schema 换无版本 $id。不重跑文档补全、不 init --apply。本 eval 不表示已实测。",
+      "prompt": "从 PH 1.1.6 直接升到 1.1.9。项目 ph.json 里还有 schema_version 字段，业务文档和没做完的升级记录都别动。",
+      "expected_output": "触发 ph-init 的升级分流。先通过已发布 v1.1.8 工具取得 1.1.9 发行根，再读完整迁移链 1.1.6→1.1.7→1.1.8→1.1.9，进度目录用最终目标版本 1.1.9；依次处理加星说明、single-ph-version 和 worktree-auto-branch。业务正文、既有模式与未完成升级记录保留，已落地项不重做；旧 schema_version 字段仅在 finalize 验收通过后随 template_version=1.1.9 一起移除，schema 换无版本 $id。不重跑文档补全、不 init --apply。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 21,
+      "prompt": "Windows 上新仓库初始化 PH，Git 没开符号链接支持。装完同事问：根 AGENTS.md 怎么不是链接，是不是功能缩水了？",
+      "expected_output": "触发 ph-init。新装缺省 auto：dry-run 不探测、不写入；apply 阶段先探测链接能力，Windows core.symlinks=false、文件系统不支持链接等探测失败场景自动改用 portable 受管副本，不当作错误。向用户解释 portable 是内容一致的受管镜像、不是功能降级，并说明显式 --mode symlink 会严格失败不回退、已装项目升级保留模式不自动转换。check 通过即可，不改业务文件。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 22,
+      "prompt": "团队同时用 Claude Code、Codex 和 OpenCode。初始化 PH 之后，各自的规则入口和技能从哪里读？",
+      "expected_output": "触发 ph-init（或已装项目的检查说明）。canonical 固定在 .agents/：约束正文 .agents/AGENTS.md，技能 .agents/skills/；根 AGENTS.md 是通用入口。Claude Code 走 CLAUDE.md 与 .claude/skills/ 适配层；Codex、OpenCode 原生读取 .agents/skills。修改约束只编辑 .agents/AGENTS.md 后 ph-init sync，不手改适配层。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 23,
+      "prompt": "用户目录里的 ph-init 入口是 1.1.8 装的，脚本里的下载源还是旧仓 ph-init。这个已装项目要升最新正式版，旧入口还能用吗？",
+      "expected_output": "触发 ph-init。1.1.8 及以后入口可直接准备最新正式版，不需要一次性入口切换（那只用于 1.1.7 及更早）。仓库已更名为 project-harness，旧地址经 GitHub 重定向指向同一仓库，旧入口按旧地址 prepare 也能取到新包，不是错误，不换源、不重装入口。固定 tag/commit 后读发行根 SKILL，本会话按 merge-update 步骤 inspect → 语义合并 → verify → finalize，不 init --apply。本 eval 不表示已实测。",
+      "files": []
+    },
+    {
+      "id": 24,
+      "prompt": "GitHub 上仓库改叫 project-harness 了，给我们项目装一套 Project Harness。装完技能是不是也要跟着改名？",
+      "expected_output": "触发 ph-init。Project Harness（PH）是产品名，官方仓库已由 ph-init 更名为 project-harness；技能名与安装路径不随仓库名变化：入口仍是 ph-init，十个技能仍是 ph-*，用户级路径仍是 ~/.agents/skills/ph-init（clone 新地址到该路径）。按正常流程 prepare、盘点、dry-run、确认后安装并跑已装内核 check。不因仓库名与技能名不同误判为未知技能，不另建 project-harness 目录。本 eval 不表示已实测。",
       "files": []
     }
   ]

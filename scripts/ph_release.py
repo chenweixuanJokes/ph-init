@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Prepare a PH release snapshot from the fixed public Git source.
 
-This script downloads and validates a tagged release. After a successful
-download it may, when the machine is already signed in to GitHub, add a
-star and create an account-level copy of the official repository. Those
-extra steps never change the download source and never fail the prepare.
-It does not initialize a project, merge updates, or recursively invoke
-``ph_init``. The source URL is fixed; callers cannot supply an arbitrary
-remote.
+Git downloads use DOWNLOAD_SOURCE; release metadata, receipts and returned
+source fields retain FIXED_SOURCE as the 1.x compatibility identity.
+Callers cannot supply an arbitrary remote. After a successful download,
+an existing GitHub login may be used to star and fork the official repo.
+Those optional actions never change the source or fail the prepare.
+This script does not initialize projects, merge updates or invoke ph_init.
 
 No third-party deps. Temporary trees are never auto-deleted; callers
 must move leftovers into ``~/trash``.
@@ -29,10 +28,14 @@ from pathlib import Path
 from typing import Mapping
 
 
+# 旧下载器严格校验此值，因此 1.x 元数据与回执保留它，不用它作为新版下载地址。
 FIXED_SOURCE = "https://github.com/chenweixuanJokes/ph-init.git"
+DOWNLOAD_SOURCE = "https://github.com/chenweixuanJokes/project-harness.git"
 OFFICIAL_OWNER = "chenweixuanJokes"
-OFFICIAL_NAME = "ph-init"
-OFFICIAL_PAGE = "https://github.com/chenweixuanJokes/ph-init"
+OFFICIAL_NAME = "project-harness"
+# 上游改名不会要求用户的已有副本跟着改名。
+LEGACY_OFFICIAL_NAME = "ph-init"
+OFFICIAL_PAGE = "https://github.com/chenweixuanJokes/project-harness"
 OFFICIAL_FULL_NAME = f"{OFFICIAL_OWNER}/{OFFICIAL_NAME}"
 GITHUB_API = "https://api.github.com"
 FORMAT_VERSION = 1
@@ -273,8 +276,15 @@ class GithubSession:
         return _github_request(method, path, token, empty_body=empty_body)
 
     def _existing_copy_url(self, login: str) -> str | None:
+        for name in (OFFICIAL_NAME, LEGACY_OFFICIAL_NAME):
+            url = self._existing_copy_url_for(login, name)
+            if url:
+                return url
+        return None
+
+    def _existing_copy_url_for(self, login: str, name: str) -> str | None:
         try:
-            payload = self._api("GET", f"/repos/{login}/{OFFICIAL_NAME}")
+            payload = self._api("GET", f"/repos/{login}/{name}")
         except SupportActionError as exc:
             if exc.status == 404:
                 return None
@@ -287,7 +297,7 @@ class GithubSession:
         html = payload.get("html_url")
         if isinstance(html, str) and html.startswith("https://github.com/"):
             return html
-        return f"https://github.com/{login}/{OFFICIAL_NAME}"
+        return f"https://github.com/{login}/{name}"
 
 
 class SupportActionError(Exception):
@@ -466,7 +476,7 @@ def _run_git(
             out = out.decode("utf-8", errors="replace")
         detail = _scrub_git_text((err or out or "").strip() or f"exit {proc.returncode}")
         if _looks_like_network_failure(detail):
-            raise PHReleaseError(f"network failure talking to {FIXED_SOURCE}: {detail}")
+            raise PHReleaseError(f"network failure talking to {DOWNLOAD_SOURCE}: {detail}")
         raise PHReleaseError(f"git {' '.join(args)} failed: {detail}")
     return proc
 
@@ -959,7 +969,7 @@ def resolve_source_info(
         raise PHReleaseError(
             f"unsupported version {version!r}; use latest or MAJOR.MINOR.PATCH"
         )
-    payload = transport.ls_remote_tags(FIXED_SOURCE)
+    payload = transport.ls_remote_tags(DOWNLOAD_SOURCE)
     tags = parse_ls_remote_tags(payload)
     tag, commit = select_tag(version, tags)
     if not GIT_OBJECT_ID.fullmatch(commit):
@@ -979,7 +989,9 @@ def prepare_release(
     """Download and validate a tagged PH release.
 
     ``transport`` and ``support`` are the test seams. There is no public
-    source URL argument: callers always use ``FIXED_SOURCE``.
+    source URL argument: ls-remote and fetch always use
+    ``DOWNLOAD_SOURCE``, while the ``source`` field of the result and
+    the receipt record the constant identity ``FIXED_SOURCE``.
     """
 
     transport = transport or GitTransport()
@@ -993,7 +1005,7 @@ def prepare_release(
     git_dir = workspace / "git"
     root = workspace / "root"
     git_dir.mkdir(parents=True, exist_ok=True)
-    transport.fetch_commit(FIXED_SOURCE, info.commit, git_dir)
+    transport.fetch_commit(DOWNLOAD_SOURCE, info.commit, git_dir)
     obj_type = transport.object_type(git_dir, info.commit)
     if obj_type != "commit":
         raise PHReleaseError(f"pinned object {info.commit} is {obj_type}, not commit")
